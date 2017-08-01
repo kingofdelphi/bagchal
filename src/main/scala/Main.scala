@@ -63,10 +63,15 @@ object Main extends JFXApp {
                 }
               } else {
                 if (curbox == BagChalGame.NONE) {
-                  if (handleTigerMovement(first_sel, selbox)) {
+                  val r = handleTigerMovement(first_sel, selbox)
+                  if (r._1) {
                     game.turn = BagChalGame.GOAT
                     game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.NONE
                     game.state.matrix(selbox._2)(selbox._1) = BagChalGame.TIGER
+                    if (r._2) {
+                      val mid = getMidPoint(first_sel, selbox)
+                      game.state.matrix(mid._2)(mid._1) = BagChalGame.NONE
+                    }
                     first_sel = (-1, -1)
                   }
                 }
@@ -109,15 +114,26 @@ object Main extends JFXApp {
     render
   }
 
+  def getMidPoint(src: (Int, Int), dest: (Int, Int)) = {
+    val x : Int = (src._1 + dest._1) / 2
+    val y : Int = (src._2 + dest._2) / 2
+    (x, y)
+  }
+
   def handleTigerMovement(src: (Int, Int), dest: (Int, Int)) = {
     val (dx : Int, dy : Int) = (dest._1 - src._1, dest._2 - src._2)
     val rd = Math.max(Math.abs(dx), Math.abs(dy))
     if (rd == 1) {
-      Math.abs(dx) + Math.abs(dy) == 1 || (src._1 + src._2) % 2 == 0
+      (Math.abs(dx) + Math.abs(dy) == 1 || (src._1 + src._2) % 2 == 0, false)
     } else if (rd == 2) {
-      dx == dy || dx == -dy || Math.abs(dx) + Math.abs(dy) == 2
+      val diag = (dx == dy || dx == -dy)
+      val r = (diag && (src._1 + src._2) % 2 == 0 || Math.abs(dx) + Math.abs(dy) == 2) && {
+        val t = getMidPoint(src, dest)
+        game.state.matrix(t._2)(t._1) == BagChalGame.GOAT
+      }
+      (r, r)
     } else {
-      false
+      (false, false)
     }
   }
 
@@ -162,13 +178,14 @@ object Main extends JFXApp {
 
     val fontsize = 10
 
-    gc.fill = Color.Black
 
     for (row <- (0 until game.size); col <- (0 until game.size)) {
       game.state.matrix(row)(col) match {
         case BagChalGame.TIGER =>
+          gc.fill = if (game.turn == BagChalGame.TIGER) Color.Red else Color.Black
           gc.fillText("Tiger", col * gsz - fontsize, row * gsz)
         case BagChalGame.GOAT =>
+          gc.fill = if (game.turn == BagChalGame.GOAT) Color.Green else Color.Black
           gc.fillText("Goat", col * gsz - fontsize, row * gsz)
         case BagChalGame.NONE =>
       }
