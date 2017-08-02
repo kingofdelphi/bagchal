@@ -6,7 +6,9 @@ import scalafx.application.JFXApp.PrimaryStage
 import scalafx.beans.property.DoubleProperty.sfxDoubleProperty2jfx
 import scalafx.event.{Event, EventType}
 import scalafx.scene.canvas.Canvas
+import scalafx.scene.control.Button
 import scalafx.scene.input.{KeyCode, KeyEvent, MouseEvent}
+import scalafx.scene.layout.{HBox, VBox}
 import scalafx.scene.paint.Stop.sfxStop2jfx
 import scalafx.scene.paint.{Color, CycleMethod, LinearGradient, Stop}
 import scalafx.scene.shape.{ArcType, Rectangle}
@@ -21,10 +23,24 @@ object Main extends JFXApp {
   val canvas = new Canvas(width, height)
 
   val rootPane = new Group
+  val button1 = new Button("list tiger moves")
+  val button2 = new Button("list goat moves")
 
-  rootPane.children = List(canvas)
+  button1.onMouseClicked = (event : MouseEvent) => {
+    game.getPossibleTigerMoves
+  }
 
-  val scene1 = new Scene(width, height) {
+  button2.onMouseClicked = (event : MouseEvent) => {
+    game.getPossibleGoatMoves
+  }
+
+  val box = new VBox
+  val buttons = new HBox
+  buttons.children = List(button1, button2)
+  box.children = List(canvas, buttons)
+  rootPane.children = List(box)
+
+  val scene1 = new Scene {
     root = rootPane
   }
 
@@ -36,6 +52,8 @@ object Main extends JFXApp {
   val gc = canvas.graphicsContext2D
 
   val game = new BagChalGame(5)
+  game.dummy
+
   var selbox = (0, 0)
   var first_sel = (-1, -1)
 
@@ -49,52 +67,52 @@ object Main extends JFXApp {
         (0, -1)
       case KeyCode.Down =>
         (0, 1)
-      case KeyCode.Space =>
+      case KeyCode.S =>
         if (first_sel == selbox)
           first_sel = (-1, -1)
         else {
           val curbox = game.state.matrix(selbox._2)(selbox._1)
           game.turn match {
-            case BagChalGame.TIGER =>
+            case BagChalGame.Tiger =>
               //not previously selected
               if (first_sel._1 == -1) {
-                if (curbox == BagChalGame.TIGER) {
+                if (curbox == BagChalGame.Tiger) {
                   first_sel = selbox
                 }
               } else {
-                if (curbox == BagChalGame.NONE) {
-                  val r = handleTigerMovement(first_sel, selbox)
+                if (curbox == BagChalGame.None) {
+                  val r = game.handleTigerMovement(first_sel, selbox)
                   if (r._1) {
-                    game.turn = BagChalGame.GOAT
-                    game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.NONE
-                    game.state.matrix(selbox._2)(selbox._1) = BagChalGame.TIGER
+                    game.turn = BagChalGame.Goat
+                    game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.None
+                    game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Tiger
                     if (r._2) {
-                      val mid = getMidPoint(first_sel, selbox)
-                      game.state.matrix(mid._2)(mid._1) = BagChalGame.NONE
+                      val mid = BagChalGame.getMidPoint(first_sel, selbox)
+                      game.state.matrix(mid._2)(mid._1) = BagChalGame.None
                     }
                     first_sel = (-1, -1)
                   }
                 }
               }
 
-            case BagChalGame.GOAT =>
+            case BagChalGame.Goat =>
               if (game.goats_to_insert > 0) {
-                if (curbox == BagChalGame.NONE) {
+                if (curbox == BagChalGame.None) {
                   game.goats_to_insert -= 1
-                  game.state.matrix(selbox._2)(selbox._1) = BagChalGame.GOAT
-                  game.turn = BagChalGame.TIGER
+                  game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Goat
+                  game.turn = BagChalGame.Tiger
                 }
               } else {
                 if (first_sel._1 == -1) {
-                  if (curbox == BagChalGame.GOAT) {
+                  if (curbox == BagChalGame.Goat) {
                     first_sel = selbox
                   }
                 } else {
-                  if (curbox == BagChalGame.NONE) {
-                    if (handleGoatMovement(first_sel, selbox)) {
-                      game.turn = BagChalGame.TIGER
-                      game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.NONE
-                      game.state.matrix(selbox._2)(selbox._1) = BagChalGame.GOAT
+                  if (curbox == BagChalGame.None) {
+                    if (game.handleGoatMovement(first_sel, selbox)) {
+                      game.turn = BagChalGame.Tiger
+                      game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.None
+                      game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Goat
                       first_sel = (-1, -1)
                     }
                   }
@@ -112,38 +130,6 @@ object Main extends JFXApp {
       Math.max(0, Math.min(selbox._2 + dy, game.size - 1))
     )
     render
-  }
-
-  def getMidPoint(src: (Int, Int), dest: (Int, Int)) = {
-    val x : Int = (src._1 + dest._1) / 2
-    val y : Int = (src._2 + dest._2) / 2
-    (x, y)
-  }
-
-  def handleTigerMovement(src: (Int, Int), dest: (Int, Int)) = {
-    val (dx : Int, dy : Int) = (dest._1 - src._1, dest._2 - src._2)
-    val rd = Math.max(Math.abs(dx), Math.abs(dy))
-    if (rd == 1) {
-      (Math.abs(dx) + Math.abs(dy) == 1 || (src._1 + src._2) % 2 == 0, false)
-    } else if (rd == 2) {
-      val diag = (dx == dy || dx == -dy)
-      val r = (diag && (src._1 + src._2) % 2 == 0 || Math.abs(dx) + Math.abs(dy) == 2) && {
-        val t = getMidPoint(src, dest)
-        game.state.matrix(t._2)(t._1) == BagChalGame.GOAT
-      }
-      (r, r)
-    } else {
-      (false, false)
-    }
-  }
-
-  def handleGoatMovement(src: (Int, Int), dest: (Int, Int)) = {
-    val (dx : Int, dy : Int) = (dest._1 - src._1, dest._2 - src._2)
-    if (Math.max(Math.abs(dx), Math.abs(dy)) <= 1) {
-      Math.abs(dx) + Math.abs(dy) == 1 || (src._1 + src._2) % 2 == 0
-    } else {
-      false
-    }
   }
 
   def render {
@@ -181,13 +167,13 @@ object Main extends JFXApp {
 
     for (row <- (0 until game.size); col <- (0 until game.size)) {
       game.state.matrix(row)(col) match {
-        case BagChalGame.TIGER =>
-          gc.fill = if (game.turn == BagChalGame.TIGER) Color.Red else Color.Black
+        case BagChalGame.Tiger =>
+          gc.fill = if (game.turn == BagChalGame.Tiger) Color.Red else Color.Black
           gc.fillText("Tiger", col * gsz - fontsize, row * gsz)
-        case BagChalGame.GOAT =>
-          gc.fill = if (game.turn == BagChalGame.GOAT) Color.Green else Color.Black
+        case BagChalGame.Goat =>
+          gc.fill = if (game.turn == BagChalGame.Goat) Color.Green else Color.Black
           gc.fillText("Goat", col * gsz - fontsize, row * gsz)
-        case BagChalGame.NONE =>
+        case BagChalGame.None =>
       }
     }
     gc.fill = Color.Red
