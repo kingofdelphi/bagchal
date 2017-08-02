@@ -55,6 +55,7 @@ class BagChalGame(val size : Int) {
       }
     }
     state.matrix(1)(0) = BagChalGame.None
+    goats_to_insert = 0
   }
 
   def getPossibleGoatMoves = {
@@ -69,7 +70,8 @@ class BagChalGame(val size : Int) {
       goat_pos.flatMap(x => {
         BagChalGame.goat_deltas.map(y => {
           val (px, py) = (y._1 + x._1, y._2 + x._2)
-          val valid = BagChalGame.inBounds(px, py, size) && state.matrix(py)(px) == BagChalGame.None
+          val valid = BagChalGame.inBounds(px, py, size) && state.matrix(py)(px) == BagChalGame.None &&
+            (y._1 == 0 || y._2 == 0 || (x._1 + x._2) % 2 == 0)
           (if (valid) x else (-1, -1), (px, py))
         }).filter(_._1._1 >= 0)
 
@@ -77,7 +79,6 @@ class BagChalGame(val size : Int) {
 
     }
 
-    moves.foreach(println)
     moves
 
   }
@@ -92,20 +93,21 @@ class BagChalGame(val size : Int) {
         val (px, py) = (y._1._1 + x._1, y._1._2 + x._2)
         val typ = Math.floorDiv(y._2, 8)
         val valid = BagChalGame.inBounds(px, py, size) && state.matrix(py)(px) == BagChalGame.None &&
+          (y._1._1 == 0 || y._1._2 == 0 || (x._1 + x._2) % 2 == 0) &&
           (typ match {
             case 0 => true
             case 1 =>
               val mid = BagChalGame.getMidPoint(x, (px, py))
               state.matrix(mid._2)(mid._1) == BagChalGame.Goat
           })
-
+        if (valid && state.matrix(py)(px) != BagChalGame.None) {
+          println("fuck")
+        }
         (x, (px, py), if (valid) typ else -1)
 
       }).filter(_._3 >= 0)
 
     })
-
-    r.foreach(println)
 
     r
 
@@ -139,5 +141,54 @@ class BagChalGame(val size : Int) {
 
   val state = new State
   var turn = BagChalGame.Goat
+
+  var ai = BagChalGame.None
+
+  def setAI(ai_type : Int): Unit = {
+    ai = ai_type
+  }
+
+  def setTurn(which : Int): Unit = {
+    turn = which
+  }
+
+  def computerMove() = {
+    if (turn == BagChalGame.Tiger) {
+      val moves = scala.util.Random.shuffle(getPossibleTigerMoves)
+      if (moves.isEmpty) {
+        println("game over")
+      } else {
+        val mv = moves.head
+        if (mv._3 == 1) {
+          val mid = BagChalGame.getMidPoint(mv._1, mv._2)
+
+          if (state.matrix(mid._2)(mid._1) != BagChalGame.Goat) {
+            println("error " + mv + " " + System.currentTimeMillis())
+          } else {
+            state.matrix(mid._2)(mid._1) = BagChalGame.None
+          }
+        }
+        println(mv + " " + System.currentTimeMillis())
+        state.matrix(mv._1._2)(mv._1._1) = BagChalGame.None
+        state.matrix(mv._2._2)(mv._2._1) = BagChalGame.Tiger
+      }
+    } else {
+      println("ai not implemented yet")
+    }
+  }
+
+  def changeTurn() : Int = {
+    turn = if (turn == BagChalGame.Goat) BagChalGame.Tiger else BagChalGame.Goat
+    run()
+    turn
+  }
+
+  def run() = {
+    println(if (turn == BagChalGame.Goat) "Goat" else "Tiger")
+    if (turn == ai) {
+      computerMove()
+      changeTurn()
+    }
+  }
 
 }
