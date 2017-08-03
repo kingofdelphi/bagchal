@@ -26,6 +26,18 @@ object BagChalGame {
 
 class BagChalGame(val size : Int) {
   var goats_to_insert = 20
+  var goats_eaten = 0
+
+  override def clone = {
+    val game = new BagChalGame(size)
+    game.goats_to_insert = goats_to_insert
+    game.goats_eaten = goats_eaten
+
+    for (row <- (0 until size); col <- (0 until size)) {
+      game.state.matrix(row)(col) = state.matrix(row)(col)
+    }
+    game
+  }
 
   class State {
     val matrix = Array.ofDim[Int](size, size)
@@ -125,8 +137,73 @@ class BagChalGame(val size : Int) {
     util.Random.shuffle(getPossibleTigerMoves).headOption
   }
 
+  def getBestGoatMoveR(game : BagChalGame, depth : Int) : (((Int, Int), (Int, Int)), Double) = {
+    val moves = game.getPossibleGoatMoves
+
+    if (moves.isEmpty) (null, -1000) else {
+      if (depth == 1) (moves.head, -game.goats_eaten)
+      else {
+        val candidates = moves.map(x => {
+          val cl = game.clone()
+          cl.executeGoatMove(x)
+          val d = getTigerBestMoveR(cl, depth - 1)
+          (x, -d._2)
+        })
+
+        val bstScore = candidates.map(_._2).max
+        candidates.filter(_._2 == bstScore).head
+      }
+
+    }
+  }
+
+  def getTigerBestMoveR(game : BagChalGame, depth : Int) : (((Int, Int), (Int, Int), Int), Double) = {
+    val moves = game.getPossibleTigerMoves
+
+    if (moves.isEmpty) (null, -1000) else {
+      if (depth == 1) (moves.head, game.goats_eaten)
+      else {
+        val candidates = moves.map(x => {
+          val cl = game.clone()
+          cl.executeTigerMove(x)
+          val d = getBestGoatMoveR(cl, depth - 1)
+          (x, -d._2)
+        })
+
+        val bstScore = candidates.map(_._2).max
+        val bst = candidates.filter(_._2 == bstScore)
+        val goat_eater_moves = bst.filter(_._1._3 == 1)
+        if (goat_eater_moves.isEmpty) bst.head else goat_eater_moves.head
+      }
+    }
+  }
+
+  val mxtigerdepth = 5
+  val mxgoatdepth = 5
+
+  def strategy2 = {
+    val move = getTigerBestMoveR(clone(), mxtigerdepth)
+    move._1
+  }
+
+  def strategy3 = {
+    val move = getTigerBestMoveR(clone(), 2)
+    move._1
+  }
+
   def getBestTigerMove = {
-   strategy1
+    if (getPossibleTigerMoves.isEmpty) None
+    else {
+      Some(strategy2)
+    }
+  }
+
+  def getBestGoatMove = {
+    if (getPossibleGoatMoves.isEmpty) None
+    else {
+      val move = getBestGoatMoveR(clone(), mxgoatdepth)
+      Some(move._1)
+    }
   }
 
   def handleTigerMovement(src: (Int, Int), dest: (Int, Int)) : (Boolean, Boolean) = {
@@ -168,21 +245,20 @@ class BagChalGame(val size : Int) {
     turn = which
   }
 
-  def computerMove() = {
-    if (turn == BagChalGame.Tiger) {
-      val moves = scala.util.Random.shuffle(getPossibleTigerMoves)
-      moves.headOption
-    } else {
-      throw new Exception("ai not implemented yet")
+  def executeGoatMove(mv : ((Int, Int), (Int, Int))) = {
+    if (mv._1 == mv._2) {
+      goats_to_insert -= 1
     }
+    state.matrix(mv._1._2)(mv._1._1) = BagChalGame.None
+    state.matrix(mv._2._2)(mv._2._1) = BagChalGame.Goat
   }
 
   def executeTigerMove(mv : ((Int, Int), (Int, Int), Int)) = {
     if (mv._3 == 1) {
       val mid = BagChalGame.getMidPoint(mv._1, mv._2)
       state.matrix(mid._2)(mid._1) = BagChalGame.None
+      goats_eaten += 1
     }
-    println(mv + " " + System.currentTimeMillis())
     state.matrix(mv._1._2)(mv._1._1) = BagChalGame.None
     state.matrix(mv._2._2)(mv._2._1) = BagChalGame.Tiger
   }

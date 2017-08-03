@@ -89,16 +89,8 @@ object Main extends JFXApp {
                 if (curbox == BagChalGame.None) {
                   val r = game.handleTigerMovement(first_sel, selbox)
                   if (r._1) {
-                    entities.filter(_.dest == first_sel).foreach(x => x.transitionTo(selbox))
-                    game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.None
-                    game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Tiger
-                    if (r._2) {
-                      val mid = BagChalGame.getMidPoint(first_sel, selbox)
-                      entities = entities.filter(_.dest != mid)
-                      game.state.matrix(mid._2)(mid._1) = BagChalGame.None
-                    }
+                    executeTigerMove((first_sel, selbox, if (r._2) 1 else 0))
                     first_sel = (-1, -1)
-                    changeturn = 1
                   }
                 }
               }
@@ -106,12 +98,7 @@ object Main extends JFXApp {
             case BagChalGame.Goat =>
               if (game.goats_to_insert > 0) {
                 if (curbox == BagChalGame.None) {
-                  game.goats_to_insert -= 1
-                  game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Goat
-                  val goat = new Goat(Point(), selbox)
-                  goat.moveTo(goat.dest)
-                  entities = entities :+ goat
-                  changeturn = 1
+                  executeGoatMove((selbox, selbox))
                 }
               } else {
                 if (first_sel._1 == -1) {
@@ -121,11 +108,8 @@ object Main extends JFXApp {
                 } else {
                   if (curbox == BagChalGame.None) {
                     if (game.handleGoatMovement(first_sel, selbox)) {
-                      game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.None
-                      game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Goat
-                      entities.filter(_.dest == first_sel).foreach(x => x.transitionTo(selbox))
+                      executeGoatMove((first_sel, selbox))
                       first_sel = (-1, -1)
-                      changeturn = 1
                     }
                   }
                 }
@@ -201,6 +185,29 @@ object Main extends JFXApp {
     entities.foreach(x => x.moveTo(x.dest))
   }
 
+  def executeTigerMove(move : ((Int, Int), (Int, Int), Int)) = {
+    if (move._3 == 1) {
+      //remove goat
+      val mid = BagChalGame.getMidPoint(move._1, move._2)
+      entities.filter(x => !x.destroyed && x.dest == mid).foreach(x => x.destroy())
+    }
+    entities.filter(_.dest == move._1).foreach(x => x.transitionTo(move._2))
+    game.executeTigerMove(move)
+    changeturn = 1
+  }
+
+  def executeGoatMove(move : ((Int, Int), (Int, Int))) = {
+    if (move._1 == move._2) {
+      val goat = new Goat(Point(), move._1)
+      goat.moveTo(goat.dest)
+      entities = entities :+ goat
+    } else {
+      entities.filter(_.dest == move._1).foreach(x => x.transitionTo(move._2))
+    }
+    game.executeGoatMove(move)
+    changeturn = 1
+  }
+
   def render {
     //get events
     keypress.map(x => {
@@ -210,17 +217,18 @@ object Main extends JFXApp {
     if (changeturn == 1) {
       val turn = game.changeTurn()
       if (turn == game.ai) {
-        val move = game.getBestTigerMove
+        if (turn == BagChalGame.Tiger) {
+          val move = game.getBestTigerMove
 
-        if (!move.isDefined) println("game finished") else {
-          if (move.get._3 == 1) {
-            //remove goat
-            val mid = BagChalGame.getMidPoint(move.get._1, move.get._2)
-            entities.filter(x => !x.destroyed && x.dest == mid).foreach(x => x.destroy())
+          if (!move.isDefined) println("game finished") else {
+            executeTigerMove(move.get)
           }
-          entities.filter(_.dest == move.get._1).foreach(x => x.transitionTo(move.get._2))
-          game.executeTigerMove(move.get)
-          changeturn = 1
+        } else {
+          val move = game.getBestGoatMove
+
+          if (!move.isDefined) println("game finished") else {
+            executeGoatMove(move.get)
+          }
         }
       } else changeturn = 0
     }
