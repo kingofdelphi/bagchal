@@ -1,6 +1,7 @@
 package bagchal
 
 import scalafx.Includes._
+import scalafx.animation.AnimationTimer
 import scalafx.application.JFXApp
 import scalafx.application.JFXApp.PrimaryStage
 import scalafx.beans.property.DoubleProperty.sfxDoubleProperty2jfx
@@ -52,16 +53,18 @@ object Main extends JFXApp {
   val gc = canvas.graphicsContext2D
 
   val game = new BagChalGame(5)
-  game.dummy
+  //game.dummy
   game.setAI(BagChalGame.Tiger)
   game.setTurn(BagChalGame.Goat)
-  game.run()
 
   var selbox = (0, 0)
   var first_sel = (-1, -1)
+  var keypress : Option[KeyCode] = None
+  var changeturn = 0
 
-  scene1.onKeyPressed = (event: KeyEvent) => {
-    val (dx : Int, dy : Int) = event.code match {
+  def handleKeyEvent(code : KeyCode) = {
+
+    val (dx : Int, dy : Int) = code match {
       case KeyCode.Left =>
         (-1, 0)
       case KeyCode.Right =>
@@ -86,14 +89,16 @@ object Main extends JFXApp {
                 if (curbox == BagChalGame.None) {
                   val r = game.handleTigerMovement(first_sel, selbox)
                   if (r._1) {
+                    entities.filter(_.dest == first_sel).foreach(x => x.transitionTo(selbox))
                     game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.None
                     game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Tiger
                     if (r._2) {
                       val mid = BagChalGame.getMidPoint(first_sel, selbox)
+                      entities = entities.filter(_.dest != mid)
                       game.state.matrix(mid._2)(mid._1) = BagChalGame.None
                     }
                     first_sel = (-1, -1)
-                    game.changeTurn()
+                    changeturn = 1
                   }
                 }
               }
@@ -103,7 +108,10 @@ object Main extends JFXApp {
                 if (curbox == BagChalGame.None) {
                   game.goats_to_insert -= 1
                   game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Goat
-                  game.changeTurn()
+                  val goat = new Goat(Point(), selbox)
+                  goat.moveTo(goat.dest)
+                  entities = entities :+ goat
+                  changeturn = 1
                 }
               } else {
                 if (first_sel._1 == -1) {
@@ -115,8 +123,9 @@ object Main extends JFXApp {
                     if (game.handleGoatMovement(first_sel, selbox)) {
                       game.state.matrix(first_sel._2)(first_sel._1) = BagChalGame.None
                       game.state.matrix(selbox._2)(selbox._1) = BagChalGame.Goat
+                      entities.filter(_.dest == first_sel).foreach(x => x.transitionTo(selbox))
                       first_sel = (-1, -1)
-                      game.changeTurn()
+                      changeturn = 1
                     }
                   }
                 }
@@ -132,18 +141,93 @@ object Main extends JFXApp {
       Math.max(0, Math.min(selbox._1 + dx, game.size - 1)),
       Math.max(0, Math.min(selbox._2 + dy, game.size - 1))
     )
-    render
+  }
+
+  scene1.onKeyPressed = (event: KeyEvent) => {
+    keypress = Some(event.code)
+  }
+
+  case class Point(val x : Double = 0, val y : Double = 0)
+
+  val offset = 50
+  val w : Double = Math.min(canvas.width.get, canvas.height.get) - 2 * offset
+
+  val gsz = w / (game.size - 1)
+
+  abstract class Entity(var src : Point, var dest : (Int, Int)) {
+    var alpha = 1.0
+    val f = 0.004
+    var destroyed = false
+    def destroy() = destroyed = true
+    def moveTo(p : (Int, Int)) = {
+      src = Point(p._1 * gsz, p._2 * gsz)
+      dest = p
+    }
+
+    def transitionTo(p : (Int, Int)) = {
+      dest = p
+    }
+
+    def upd = {
+      val dp = Point(dest._1 * gsz - src.x, dest._2 * gsz - src.y)
+      src = Point(src.x + dp.x * f, src.y + dp.y * f)
+      if (destroyed) {
+        alpha = 0.999 * alpha
+      }
+    }
+    def draw
+  }
+
+  class Tiger(src_p : Point, dest_p : (Int, Int)) extends Entity(src_p, dest_p) {
+    def draw = {
+      gc.fill = if (game.turn == BagChalGame.Tiger) Color.Green else Color.Black
+      gc.fillText("Tiger", src.x, src.y)
+    }
+  }
+
+  class Goat(src_p : Point, dest_p : (Int, Int)) extends Entity(src_p, dest_p) {
+    def draw = {
+      gc.fill = if (!destroyed) (if (game.turn == BagChalGame.Goat) Color.Green else Color.Black) else Color.Red
+      gc.setGlobalAlpha(alpha)
+      gc.fillText("Goat", src.x, src.y)
+      gc.setGlobalAlpha(1.0)
+    }
+  }
+
+  var entities : Seq[Entity] = Seq()
+
+  def loadEntities = {
+    entities = Seq(game.getGoats.map(x => new Goat(Point(), x)), game.getTigers.map(x => new Tiger(Point(), x))).flatten
+    entities.foreach(x => x.moveTo(x.dest))
   }
 
   def render {
+    //get events
+    keypress.map(x => {
+      handleKeyEvent(x)
+      keypress = None
+    })
+    if (changeturn == 1) {
+      val turn = game.changeTurn()
+      if (turn == game.ai) {
+        val move = game.getBestTigerMove
+
+        if (!move.isDefined) println("game finished") else {
+          if (move.get._3 == 1) {
+            //remove goat
+            val mid = BagChalGame.getMidPoint(move.get._1, move.get._2)
+            entities.filter(x => !x.destroyed && x.dest == mid).foreach(x => x.destroy())
+          }
+          entities.filter(_.dest == move.get._1).foreach(x => x.transitionTo(move.get._2))
+          game.executeTigerMove(move.get)
+          changeturn = 1
+        }
+      } else changeturn = 0
+    }
+    //update entity positions
+    entities.foreach(x => x.upd)
     gc.fill = Color.White
     gc.fillRect(0, 0, canvas.width.get, canvas.height.get)
-
-    val offset = 50
-    val w = Math.min(canvas.width.get, canvas.height.get) - 2 * offset
-
-    val gsz = w / (game.size - 1)
-
     gc.translate(offset, offset)
 
     gc.setStroke(Color.Blue);
@@ -167,18 +251,8 @@ object Main extends JFXApp {
 
     val fontsize = 10
 
+    entities.foreach(x => x.draw)
 
-    for (row <- (0 until game.size); col <- (0 until game.size)) {
-      game.state.matrix(row)(col) match {
-        case BagChalGame.Tiger =>
-          gc.fill = if (game.turn == BagChalGame.Tiger) Color.Red else Color.Black
-          gc.fillText("Tiger", col * gsz - fontsize, row * gsz)
-        case BagChalGame.Goat =>
-          gc.fill = if (game.turn == BagChalGame.Goat) Color.Green else Color.Black
-          gc.fillText("Goat", col * gsz - fontsize, row * gsz)
-        case BagChalGame.None =>
-      }
-    }
     gc.fill = Color.Red
     val rad = gsz / 3.0
     gc.setGlobalAlpha(0.3)
@@ -195,6 +269,13 @@ object Main extends JFXApp {
 
   }
 
-  render
+  val timer = new AnimationTimer(t => {
+    render
+  }) {
+
+  }
+
+  loadEntities
+  timer.start()
 
 }

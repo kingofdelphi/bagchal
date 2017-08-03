@@ -58,15 +58,19 @@ class BagChalGame(val size : Int) {
     goats_to_insert = 0
   }
 
+  def getGoats = {
+    for (row <- (0 until size); col <- (0 until size) if (state.matrix(row)(col) == BagChalGame.Goat)) yield {
+      (col, row)
+    }
+  }
+
   def getPossibleGoatMoves = {
     val moves = if (goats_to_insert > 0) {
       for (row <- (0 until size); col <- (0 until size) if (state.matrix(row)(col) == BagChalGame.None)) yield {
         ((col, row), (col, row))
       }
     } else {
-      val goat_pos = for (row <- (0 until size); col <- (0 until size) if (state.matrix(row)(col) == BagChalGame.Goat)) yield {
-        (col, row)
-      }
+      val goat_pos = getGoats
       goat_pos.flatMap(x => {
         BagChalGame.goat_deltas.map(y => {
           val (px, py) = (y._1 + x._1, y._2 + x._2)
@@ -83,10 +87,14 @@ class BagChalGame(val size : Int) {
 
   }
 
-  def getPossibleTigerMoves = {
-    val tiger_pos = for (row <- (0 until size); col <- (0 until size) if (state.matrix(row)(col) == BagChalGame.Tiger)) yield {
+  def getTigers = {
+    for (row <- (0 until size); col <- (0 until size) if (state.matrix(row)(col) == BagChalGame.Tiger)) yield {
       (col, row)
     }
+  }
+
+  def getPossibleTigerMoves = {
+    val tiger_pos = getTigers
 
     val r = tiger_pos.flatMap(x => {
       BagChalGame.tiger_deltas.zipWithIndex.map(y => {
@@ -111,6 +119,14 @@ class BagChalGame(val size : Int) {
 
     r
 
+  }
+
+  def strategy1 = {
+    util.Random.shuffle(getPossibleTigerMoves).headOption
+  }
+
+  def getBestTigerMove = {
+   strategy1
   }
 
   def handleTigerMovement(src: (Int, Int), dest: (Int, Int)) : (Boolean, Boolean) = {
@@ -155,40 +171,25 @@ class BagChalGame(val size : Int) {
   def computerMove() = {
     if (turn == BagChalGame.Tiger) {
       val moves = scala.util.Random.shuffle(getPossibleTigerMoves)
-      if (moves.isEmpty) {
-        println("game over")
-      } else {
-        val mv = moves.head
-        if (mv._3 == 1) {
-          val mid = BagChalGame.getMidPoint(mv._1, mv._2)
-
-          if (state.matrix(mid._2)(mid._1) != BagChalGame.Goat) {
-            println("error " + mv + " " + System.currentTimeMillis())
-          } else {
-            state.matrix(mid._2)(mid._1) = BagChalGame.None
-          }
-        }
-        println(mv + " " + System.currentTimeMillis())
-        state.matrix(mv._1._2)(mv._1._1) = BagChalGame.None
-        state.matrix(mv._2._2)(mv._2._1) = BagChalGame.Tiger
-      }
+      moves.headOption
     } else {
-      println("ai not implemented yet")
+      throw new Exception("ai not implemented yet")
     }
+  }
+
+  def executeTigerMove(mv : ((Int, Int), (Int, Int), Int)) = {
+    if (mv._3 == 1) {
+      val mid = BagChalGame.getMidPoint(mv._1, mv._2)
+      state.matrix(mid._2)(mid._1) = BagChalGame.None
+    }
+    println(mv + " " + System.currentTimeMillis())
+    state.matrix(mv._1._2)(mv._1._1) = BagChalGame.None
+    state.matrix(mv._2._2)(mv._2._1) = BagChalGame.Tiger
   }
 
   def changeTurn() : Int = {
     turn = if (turn == BagChalGame.Goat) BagChalGame.Tiger else BagChalGame.Goat
-    run()
     turn
-  }
-
-  def run() = {
-    println(if (turn == BagChalGame.Goat) "Goat" else "Tiger")
-    if (turn == ai) {
-      computerMove()
-      changeTurn()
-    }
   }
 
 }
