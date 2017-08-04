@@ -37,7 +37,7 @@ object Main extends JFXApp {
 
   val box = new VBox
   val buttons = new HBox
-  buttons.children = List(button1, button2)
+  buttons.children = List()
   box.children = List(canvas, buttons)
   rootPane.children = List(box)
 
@@ -54,13 +54,13 @@ object Main extends JFXApp {
 
   val game = new BagChalGame(5)
   //game.dummy
-  game.setAI(BagChalGame.Tiger)
-  game.setTurn(BagChalGame.Goat)
+  game.setAI(BagChalGame.Goat)
+  game.setTurn(BagChalGame.Tiger)
 
   var selbox = (0, 0)
   var first_sel = (-1, -1)
   var keypress : Option[KeyCode] = None
-  var changeturn = 0
+  var changeturn = 1
 
   def handleKeyEvent(code : KeyCode) = {
 

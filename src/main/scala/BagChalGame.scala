@@ -39,6 +39,18 @@ class BagChalGame(val size : Int) {
     game
   }
 
+  def print = {
+    for (row <- 0 until size) {
+      var s : String = ""
+      for (col <- 0 until size) {
+        val typ = state.matrix(row)(col)
+        val ok = if (typ == BagChalGame.None) "-" else if (typ == BagChalGame.Tiger) "T" else "G"
+        s = s + ok
+      }
+      println(s)
+    }
+  }
+
   class State {
     val matrix = Array.ofDim[Int](size, size)
     matrix(0)(0) = BagChalGame.Tiger
@@ -136,58 +148,105 @@ class BagChalGame(val size : Int) {
   def strategy1 = {
     util.Random.shuffle(getPossibleTigerMoves).headOption
   }
-
-  def getBestGoatMoveR(game : BagChalGame, depth : Int) : (((Int, Int), (Int, Int)), Double) = {
+  val INF = 1e9
+  //get best move for goat, given that the opponents score is at least mins
+  def getBestGoatMoveR(game : BagChalGame, depth : Int, mins : Double) : (((Int, Int), (Int, Int)), Double) = {
     val moves = game.getPossibleGoatMoves
 
     if (moves.isEmpty) (null, -1000) else {
       if (depth == 1) (moves.head, -game.goats_eaten)
       else {
-        val candidates = moves.map(x => {
-          val cl = game.clone()
-          cl.executeGoatMove(x)
-          val d = getTigerBestMoveR(cl, depth - 1)
-          (x, -d._2)
+        var pruned = false
+        var candidates : Seq[(((Int, Int), (Int, Int)), Double)] = Seq()
+        var mymin = -INF
+        moves.foreach(x => {
+          if (!pruned) {
+            val cl = game.clone()
+            cl.executeGoatMove(x)
+            val d = getTigerBestMoveR(cl, depth - 1, mymin)
+            //cl.print
+            //println("goat " + d)
+            if (mymin <= -d._2) {
+              mymin = -d._2
+              //if < is used here no need to add +1 down while returning otherwise we have to add +1
+              //otherwise the move leading to game.state can be same as mins and it could be appended as a candidate
+              //move(which may not be true since the move leading to game.state could have better score than mymin)
+              //using <= instead of = prunes much more branches
+              if (d._2 <= mins) {
+                pruned = true
+              } else {
+                candidates = candidates :+ (x, -d._2)
+              }
+            }
+          }
         })
 
-        val bstScore = candidates.map(_._2).max
-        candidates.filter(_._2 == bstScore).head
+        if (pruned) {
+          //println(s"pruned at depth $depth for goat")
+          (null, mymin + 1)
+        } else {
+          val bstScore = candidates.map(_._2).max
+          candidates = candidates.filter(_._2 == bstScore)
+          scala.util.Random.shuffle(candidates).head
+        }
       }
 
     }
   }
 
-  def getTigerBestMoveR(game : BagChalGame, depth : Int) : (((Int, Int), (Int, Int), Int), Double) = {
+  def getTigerBestMoveR(game : BagChalGame, depth : Int, mins : Double) : (((Int, Int), (Int, Int), Int), Double) = {
     val moves = game.getPossibleTigerMoves
 
     if (moves.isEmpty) (null, -1000) else {
       if (depth == 1) (moves.head, game.goats_eaten)
       else {
-        val candidates = moves.map(x => {
-          val cl = game.clone()
-          cl.executeTigerMove(x)
-          val d = getBestGoatMoveR(cl, depth - 1)
-          (x, -d._2)
+        var pruned = false
+        var candidates : Seq[(((Int, Int), (Int, Int), Int), Double)] = Seq()
+        var mymin = -INF
+        moves.foreach(x => {
+          if (!pruned) {
+            val cl = game.clone()
+            cl.executeTigerMove(x)
+            val d = getBestGoatMoveR(cl, depth - 1, -INF)
+            //cl.print
+            //println("tiger " + d)
+
+            if (mymin <= -d._2) {
+              mymin = -d._2
+              //if < is used here no need to add +1 down while returning otherwise we have to add +1
+              if (d._2 <= mins) {
+                pruned = true
+              } else {
+                candidates = candidates :+ (x, -d._2)
+              }
+            }
+          }
         })
 
-        val bstScore = candidates.map(_._2).max
-        val bst = candidates.filter(_._2 == bstScore)
-        val goat_eater_moves = bst.filter(_._1._3 == 1)
-        if (goat_eater_moves.isEmpty) bst.head else goat_eater_moves.head
+        if (pruned) {
+          (null, mymin + 1)
+        } else {
+          val bstScore = candidates.map(_._2).max
+          var bst = candidates.filter(_._2 == bstScore)
+          bst = scala.util.Random.shuffle(bst)
+          val goat_eater_moves = bst.filter(_._1._3 == 1)
+          if (goat_eater_moves.isEmpty) {
+            if (depth == mxtigerdepth) {
+              game.getGoats
+            }
+            bst.head
+          } else goat_eater_moves.head
+        }
+
       }
     }
   }
 
-  val mxtigerdepth = 5
-  val mxgoatdepth = 5
+  val mxtigerdepth = 7
+  val mxgoatdepth = 7
 
   def strategy2 = {
-    val move = getTigerBestMoveR(clone(), mxtigerdepth)
-    move._1
-  }
-
-  def strategy3 = {
-    val move = getTigerBestMoveR(clone(), 2)
+    val move = getTigerBestMoveR(clone(), mxtigerdepth, -INF)
     move._1
   }
 
@@ -201,7 +260,8 @@ class BagChalGame(val size : Int) {
   def getBestGoatMove = {
     if (getPossibleGoatMoves.isEmpty) None
     else {
-      val move = getBestGoatMoveR(clone(), mxgoatdepth)
+      val move = getBestGoatMoveR(clone(), mxgoatdepth, -INF)
+      println(s"goat pos ${move._2}")
       Some(move._1)
     }
   }
