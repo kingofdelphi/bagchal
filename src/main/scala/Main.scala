@@ -1,5 +1,7 @@
 package bagchal
 
+import javafx.event.EventHandler
+
 import scalafx.Includes._
 import scalafx.animation.AnimationTimer
 import scalafx.application.JFXApp
@@ -27,8 +29,6 @@ object Main extends JFXApp {
 
   def getUI = {
     val box = new VBox
-    val layout = new HBox
-    layout.children = List(canvas, box)
 
     //Radio Button Toggle Group
     val ai1 = new ToggleGroup()
@@ -60,6 +60,7 @@ object Main extends JFXApp {
 
     val button1 = new Button("Runtime Set")
     val button2 = new Button("Reset")
+
     button2.onMouseClicked = (e : MouseEvent) => {
       val t = ai1.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
       val g = ai2.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
@@ -68,8 +69,21 @@ object Main extends JFXApp {
 
     box.children = List(g1, g2, button1, button2)
 
+    val layout = new HBox
+
+    val eater = new Group(layout) {
+      filterEvent(KeyEvent.KeyPressed) {
+        (e: KeyEvent) => {
+          keypress = Some(e.code)
+          e.consume()
+        }
+      }
+    }
+
+    layout.children = List(canvas, box)
+
     val rootPane = new Group
-    rootPane.children = List(layout)
+    rootPane.children = List(eater)
     rootPane
   }
 
@@ -157,10 +171,6 @@ object Main extends JFXApp {
       Math.max(0, Math.min(selbox._1 + dx, game.size - 1)),
       Math.max(0, Math.min(selbox._2 + dy, game.size - 1))
     )
-  }
-
-  scene1.onKeyPressed = (event: KeyEvent) => {
-    keypress = Some(event.code)
   }
 
   case class Point(val x : Double = 0, val y : Double = 0)
