@@ -22,10 +22,11 @@ import scalafx.scene.{Group, Scene}
  * Example adapted from code showed in [[http://docs.oracle.com/javafx/2/canvas/jfxpub-canvas.htm]].
  */
 object Main extends JFXApp {
-  val (width, height) = (400, 400)
-  val canvas = new Canvas(width, height)
+  val (width, height) = (600, 400)
+  val canvas = new Canvas(400, 400)
   canvas.focusTraversable = true
   canvas.onMouseClicked = (e : MouseEvent) => canvas.requestFocus()
+  val gameStatus = new Label("Game status")
 
   def getUI = {
     val box = new VBox
@@ -42,7 +43,6 @@ object Main extends JFXApp {
         maxWidth = 200
         maxHeight = 50
         text = "Human"
-        selected = true
         toggleGroup = x._1._2
       }
       rb1.setUserData("human")
@@ -50,6 +50,7 @@ object Main extends JFXApp {
         maxWidth = 200
         maxHeight = 50
         text = "Computer"
+        selected = true
         toggleGroup = x._1._2
       }
       rb2.setUserData("computer")
@@ -60,6 +61,9 @@ object Main extends JFXApp {
 
     val button1 = new Button("Runtime Set")
     val button2 = new Button("Reset")
+    var button_list = new HBox
+    button_list.children = List(button1, button2)
+
 
     button2.onMouseClicked = (e : MouseEvent) => {
       val t = ai1.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
@@ -67,7 +71,7 @@ object Main extends JFXApp {
       loadGame(t, g)
     }
 
-    box.children = List(g1, g2, button1, button2)
+    box.children = List(g1, g2, button_list, gameStatus)
 
     val layout = new HBox
 
@@ -94,12 +98,13 @@ object Main extends JFXApp {
   stage = new PrimaryStage {
     title = "BagChal Game"
     scene = scene1
+    width = canvas.width.value + 200
+    height = canvas.height.value
   }
 
   val gc = canvas.graphicsContext2D
 
   var game : BagChalGame = null
-  //game.dummy
 
   var selbox = (0, 0)
   var first_sel = (-1, -1)
@@ -183,15 +188,40 @@ object Main extends JFXApp {
   abstract class Entity(var src : Point, var dest : (Int, Int)) {
     var alpha = 1.0
     val f = 0.004
-    var destroyed = false
-    def destroy() = destroyed = true
+    val Entering = 0
+    val Destroyed = 1
+    val Stable = 2
+
+    var state = Entering
+
+    def destroy() = state = Destroyed
+
     def moveTo(p : (Int, Int)) = {
       src = Point(p._1 * gsz, p._2 * gsz)
       dest = p
     }
 
+    def destroyed = {
+      state == Destroyed
+    }
+
+    def entering = {
+      state == Entering
+    }
+
     def transitionTo(p : (Int, Int)) = {
       dest = p
+    }
+
+    def alphaStable = alpha >= 0.99
+
+    def isTransitioning = {
+      !alphaStable || {
+        val d = Point(gsz * dest._1, gsz * dest._2)
+        val dx = src.x - d.x
+        val dy = src.y - d.y
+        Math.abs(dx) + Math.abs(dy) >= 1
+      }
     }
 
     def upd = {
@@ -199,8 +229,17 @@ object Main extends JFXApp {
       src = Point(src.x + dp.x * f, src.y + dp.y * f)
       if (destroyed) {
         alpha = 0.999 * alpha
+      } else if (entering) {
+        alpha = Math.min(alpha + 0.001, 1.0)
+        if (alphaStable) state = Stable
       }
     }
+
+    def setEntering = {
+      alpha = 0.0
+      state = Entering
+    }
+
     def draw
   }
 
@@ -213,7 +252,7 @@ object Main extends JFXApp {
 
   class Goat(src_p : Point, dest_p : (Int, Int)) extends Entity(src_p, dest_p) {
     def draw = {
-      gc.fill = if (!destroyed) (if (game.turn == BagChalGame.Goat) Color.Green else Color.Black) else Color.Red
+      gc.fill = if (entering) Color.Blue else if (!destroyed) (if (game.turn == BagChalGame.Goat) Color.Green else Color.Black) else Color.Red
       gc.setGlobalAlpha(alpha)
       gc.fillText("Goat", src.x, src.y)
       gc.setGlobalAlpha(1.0)
@@ -227,7 +266,7 @@ object Main extends JFXApp {
     entities.foreach(x => x.moveTo(x.dest))
   }
 
-  def executeTigerMove(move : ((Int, Int), (Int, Int), Int)) = {
+  def executeTigerMove(move : ((Int, Int), (Int, Int), Int), score : Option[Double] = None) = {
     if (move._3 == 1) {
       //remove goat
       val mid = BagChalGame.getMidPoint(move._1, move._2)
@@ -237,12 +276,16 @@ object Main extends JFXApp {
     game.executeTigerMove(move)
     changeturn = 1
     canselect = false
+    lastTigerScore = score.getOrElse(
+      game.getBestGoatMove.map(-_._2).getOrElse(1000)
+    )
   }
 
-  def executeGoatMove(move : ((Int, Int), (Int, Int))) = {
+  def executeGoatMove(move : ((Int, Int), (Int, Int)), score : Option[Double] = None) = {
     if (move._1 == move._2) {
       val goat = new Goat(Point(), move._1)
       goat.moveTo(goat.dest)
+      goat.setEntering
       entities = entities :+ goat
     } else {
       entities.filter(_.dest == move._1).foreach(x => x.transitionTo(move._2))
@@ -250,18 +293,21 @@ object Main extends JFXApp {
     game.executeGoatMove(move)
     changeturn = 1
     canselect = false
+    lastGoatScore = score.getOrElse(
+      game.getBestTigerMove.map(-_._2).getOrElse(1000)
+    )
   }
 
   def isTransitioning = {
     entities.exists(x => {
-      val d = Point(gsz * x.dest._1, gsz * x.dest._2)
-      val dx = x.src.x - d.x
-      val dy = x.src.y - d.y
-      Math.abs(dx) + Math.abs(dy) >= 1
+      !x.destroyed && x.isTransitioning
     })
   }
 
   var gameRunning = false
+
+  var lastGoatScore : Double = 0
+  var lastTigerScore : Double = 0
 
   def render {
     if (gameRunning) {
@@ -322,21 +368,40 @@ object Main extends JFXApp {
           } else if (turn == BagChalGame.Tiger) {
             val move = game.getBestTigerMove
 
-            if (!move.isDefined) println("game finished") else {
-              executeTigerMove(move.get)
+            if (!move.isDefined) {
+              gameRunning = false
+            } else {
+              executeTigerMove(move.get._1, Some(move.get._2))
             }
           } else {
             val move = game.getBestGoatMove
 
-            if (!move.isDefined) println("game finished") else {
-              executeGoatMove(move.get)
+            if (!move.isDefined) gameRunning = false else {
+              executeGoatMove(move.get._1, Some(move.get._2))
             }
+          }
+        }
+        if (game.turn == BagChalGame.Goat){
+          if (game.getPossibleGoatMoves.isEmpty) {
+            gameRunning = false
+          }
+        } else if (game.turn == BagChalGame.Tiger){
+          if (game.getPossibleTigerMoves.isEmpty) {
+            gameRunning = false
           }
         }
       }
       //update entity positions
       entities.foreach(x => x.upd)
 
+    }
+    if (gameRunning) {
+      gameStatus.text = "Game Status: Running" +
+          s"\nLast Goat score $lastGoatScore" +
+          s"\nLast Tiger score $lastTigerScore"
+    } else {
+      val turn = if (game.turn == BagChalGame.Goat) "Tiger wins" else "Goat wins"
+      gameStatus.text = s"Game Status: $turn"
     }
   }
 

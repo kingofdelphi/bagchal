@@ -171,7 +171,7 @@ class BagChalGame(val size : Int) {
               //if < is used here no need to add +1 down while returning otherwise we have to add +1
               //otherwise the move leading to game.state can be same as mins and it could be appended as a candidate
               //move(which may not be true since the move leading to game.state could have better score than mymin)
-              //using <= instead of = prunes much more branches
+              //using <= instead of < prunes much more branches
               if (d._2 <= mins) {
                 pruned = true
               } else {
@@ -231,9 +231,6 @@ class BagChalGame(val size : Int) {
           bst = scala.util.Random.shuffle(bst)
           val goat_eater_moves = bst.filter(_._1._3 == 1)
           if (goat_eater_moves.isEmpty) {
-            if (depth == mxtigerdepth) {
-              game.getGoats
-            }
             bst.head
           } else goat_eater_moves.head
         }
@@ -247,7 +244,7 @@ class BagChalGame(val size : Int) {
 
   def strategy2 = {
     val move = getTigerBestMoveR(clone(), mxtigerdepth, -INF)
-    move._1
+    move
   }
 
   def getBestTigerMove = {
@@ -261,8 +258,8 @@ class BagChalGame(val size : Int) {
     if (getPossibleGoatMoves.isEmpty) None
     else {
       val move = getBestGoatMoveR(clone(), mxgoatdepth, -INF)
-      println(s"goat pos ${move._2}")
-      Some(move._1)
+      //println(s"goat pos ${move._2}")
+      Some(move)
     }
   }
 
@@ -331,6 +328,10 @@ class BagChalGame(val size : Int) {
   def changeTurn() : Int = {
     turn = if (turn == BagChalGame.Goat) BagChalGame.Tiger else BagChalGame.Goat
     turn
+  }
+
+  def gameFinished = {
+    getPossibleTigerMoves.isEmpty
   }
 
 }
