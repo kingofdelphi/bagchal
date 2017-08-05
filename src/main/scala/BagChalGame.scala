@@ -295,10 +295,15 @@ class BagChalGame(val size : Int) {
   val state = new State
   var turn = BagChalGame.Goat
 
-  var ai = BagChalGame.None
+  var player_tiger = BagChalGame.None
+  var player_goat = BagChalGame.None
 
-  def setAI(ai_type : Int): Unit = {
-    ai = ai_type
+  def setTiger(ai : Boolean): Unit = {
+    player_tiger = if (ai) BagChalGame.Tiger else BagChalGame.None
+  }
+
+  def setGoat(ai : Boolean): Unit = {
+    player_goat = if (ai) BagChalGame.Goat else BagChalGame.None
   }
 
   def setTurn(which : Int): Unit = {

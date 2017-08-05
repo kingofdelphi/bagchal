@@ -7,7 +7,7 @@ import scalafx.application.JFXApp.PrimaryStage
 import scalafx.beans.property.DoubleProperty.sfxDoubleProperty2jfx
 import scalafx.event.{Event, EventType}
 import scalafx.scene.canvas.Canvas
-import scalafx.scene.control.Button
+import scalafx.scene.control.{Button, Label, RadioButton, ToggleGroup}
 import scalafx.scene.input.{KeyCode, KeyEvent, MouseEvent}
 import scalafx.scene.layout.{HBox, VBox}
 import scalafx.scene.paint.Stop.sfxStop2jfx
@@ -22,27 +22,59 @@ import scalafx.scene.{Group, Scene}
 object Main extends JFXApp {
   val (width, height) = (400, 400)
   val canvas = new Canvas(width, height)
+  canvas.focusTraversable = true
+  canvas.onMouseClicked = (e : MouseEvent) => canvas.requestFocus()
 
-  val rootPane = new Group
-  val button1 = new Button("list tiger moves")
-  val button2 = new Button("list goat moves")
+  def getUI = {
+    val box = new VBox
+    val layout = new HBox
+    layout.children = List(canvas, box)
 
-  button1.onMouseClicked = (event : MouseEvent) => {
-    game.getPossibleTigerMoves
+    //Radio Button Toggle Group
+    val ai1 = new ToggleGroup()
+    val ai2 = new ToggleGroup()
+    val g1 = new VBox
+    val g2 = new VBox
+    val zip = Seq(g1, g2) zip Seq(ai1, ai2) zip Seq("Tiger", "Goat")
+
+    zip.foreach(x => {
+      val rb1 = new RadioButton {
+        maxWidth = 200
+        maxHeight = 50
+        text = "Human"
+        selected = true
+        toggleGroup = x._1._2
+      }
+      rb1.setUserData("human")
+      val rb2 = new RadioButton {
+        maxWidth = 200
+        maxHeight = 50
+        text = "Computer"
+        toggleGroup = x._1._2
+      }
+      rb2.setUserData("computer")
+      x._1._1.children = List(
+        new Label(x._2), rb1, rb2
+      )
+    })
+
+    val button1 = new Button("Runtime Set")
+    val button2 = new Button("Reset")
+    button2.onMouseClicked = (e : MouseEvent) => {
+      val t = ai1.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
+      val g = ai2.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
+      loadGame(t, g)
+    }
+
+    box.children = List(g1, g2, button1, button2)
+
+    val rootPane = new Group
+    rootPane.children = List(layout)
+    rootPane
   }
-
-  button2.onMouseClicked = (event : MouseEvent) => {
-    game.getPossibleGoatMoves
-  }
-
-  val box = new VBox
-  val buttons = new HBox
-  buttons.children = List()
-  box.children = List(canvas, buttons)
-  rootPane.children = List(box)
 
   val scene1 = new Scene {
-    root = rootPane
+    root = getUI
   }
 
   stage = new PrimaryStage {
@@ -52,15 +84,14 @@ object Main extends JFXApp {
 
   val gc = canvas.graphicsContext2D
 
-  val game = new BagChalGame(5)
+  var game : BagChalGame = null
   //game.dummy
-  game.setAI(BagChalGame.Goat)
-  game.setTurn(BagChalGame.Tiger)
 
   var selbox = (0, 0)
   var first_sel = (-1, -1)
   var keypress : Option[KeyCode] = None
   var changeturn = 1
+  var canselect = true
 
   def handleKeyEvent(code : KeyCode) = {
 
@@ -74,7 +105,8 @@ object Main extends JFXApp {
       case KeyCode.Down =>
         (0, 1)
       case KeyCode.S =>
-        if (first_sel == selbox)
+        if (!canselect) None
+        else if (first_sel == selbox)
           first_sel = (-1, -1)
         else {
           val curbox = game.state.matrix(selbox._2)(selbox._1)
@@ -136,7 +168,7 @@ object Main extends JFXApp {
   val offset = 50
   val w : Double = Math.min(canvas.width.get, canvas.height.get) - 2 * offset
 
-  val gsz = w / (game.size - 1)
+  var gsz : Double = 0
 
   abstract class Entity(var src : Point, var dest : (Int, Int)) {
     var alpha = 1.0
@@ -194,6 +226,7 @@ object Main extends JFXApp {
     entities.filter(_.dest == move._1).foreach(x => x.transitionTo(move._2))
     game.executeTigerMove(move)
     changeturn = 1
+    canselect = false
   }
 
   def executeGoatMove(move : ((Int, Int), (Int, Int))) = {
@@ -206,75 +239,95 @@ object Main extends JFXApp {
     }
     game.executeGoatMove(move)
     changeturn = 1
+    canselect = false
   }
 
-  def render {
-    //get events
-    keypress.map(x => {
-      handleKeyEvent(x)
-      keypress = None
+  def isTransitioning = {
+    entities.exists(x => {
+      val d = Point(gsz * x.dest._1, gsz * x.dest._2)
+      val dx = x.src.x - d.x
+      val dy = x.src.y - d.y
+      Math.abs(dx) + Math.abs(dy) >= 1
     })
-    if (changeturn == 1) {
-      val turn = game.changeTurn()
-      if (turn == game.ai) {
-        if (turn == BagChalGame.Tiger) {
-          val move = game.getBestTigerMove
+  }
 
-          if (!move.isDefined) println("game finished") else {
-            executeTigerMove(move.get)
-          }
-        } else {
-          val move = game.getBestGoatMove
+  var gameRunning = false
 
-          if (!move.isDefined) println("game finished") else {
-            executeGoatMove(move.get)
+  def render {
+    if (gameRunning) {
+      //render
+      gc.fill = Color.White
+      gc.fillRect(0, 0, canvas.width.get, canvas.height.get)
+      gc.translate(offset, offset)
+
+      gc.setStroke(Color.Blue);
+
+      for (row <- (0 until game.size)) {
+        gc.strokeLine(0, gsz * row, w, gsz * row)
+      }
+
+      for (col <- (0 until game.size)) {
+        gc.strokeLine(gsz * col, 0, gsz * col, w)
+      }
+
+      gc.strokeLine(0, 0, w, w)
+
+      gc.strokeLine(w, 0, 0, w)
+
+      gc.strokeLine(w / 2, 0, 0, w / 2)
+      gc.strokeLine(0, w / 2, w / 2, w)
+      gc.strokeLine(w / 2, w, w, w / 2)
+      gc.strokeLine(w, w / 2, w / 2, 0)
+
+      val fontsize = 10
+
+      entities.foreach(x => x.draw)
+
+      gc.fill = Color.Red
+      val rad = gsz / 3.0
+      gc.setGlobalAlpha(0.3)
+      gc.fillArc(selbox._1 * gsz - rad, selbox._2 * gsz - rad, 2 * rad, 2 * rad, 0, 360, ArcType.Open)
+      gc.setGlobalAlpha(1)
+
+      if (first_sel._1 != -1) {
+        gc.setGlobalAlpha(0.3)
+        gc.fillRect(first_sel._1 * gsz - rad, first_sel._2 * gsz - rad, 2 * rad, 2 * rad)
+        gc.setGlobalAlpha(1)
+      }
+
+      gc.translate(-offset, -offset)
+
+      //get events
+      keypress.map(x => {
+        handleKeyEvent(x)
+        keypress = None
+      })
+
+      if (!isTransitioning) {
+        if (changeturn == 1) {
+          val turn = game.changeTurn()
+          if (turn != game.player_goat && turn != game.player_tiger) {
+            canselect = true
+            changeturn = 0
+          } else if (turn == BagChalGame.Tiger) {
+            val move = game.getBestTigerMove
+
+            if (!move.isDefined) println("game finished") else {
+              executeTigerMove(move.get)
+            }
+          } else {
+            val move = game.getBestGoatMove
+
+            if (!move.isDefined) println("game finished") else {
+              executeGoatMove(move.get)
+            }
           }
         }
-      } else changeturn = 0
+      }
+      //update entity positions
+      entities.foreach(x => x.upd)
+
     }
-    //update entity positions
-    entities.foreach(x => x.upd)
-    gc.fill = Color.White
-    gc.fillRect(0, 0, canvas.width.get, canvas.height.get)
-    gc.translate(offset, offset)
-
-    gc.setStroke(Color.Blue);
-
-    for (row <- (0 until game.size)) {
-      gc.strokeLine(0, gsz * row, w, gsz * row)
-    }
-
-    for (col <- (0 until game.size)) {
-      gc.strokeLine(gsz * col, 0, gsz * col, w)
-    }
-
-    gc.strokeLine(0, 0, w, w)
-
-    gc.strokeLine(w, 0, 0, w)
-
-    gc.strokeLine(w / 2, 0, 0, w / 2)
-    gc.strokeLine(0, w / 2, w / 2, w)
-    gc.strokeLine(w / 2, w, w, w / 2)
-    gc.strokeLine(w, w / 2, w / 2, 0)
-
-    val fontsize = 10
-
-    entities.foreach(x => x.draw)
-
-    gc.fill = Color.Red
-    val rad = gsz / 3.0
-    gc.setGlobalAlpha(0.3)
-    gc.fillArc(selbox._1 * gsz - rad, selbox._2 * gsz - rad, 2 * rad, 2 * rad, 0, 360, ArcType.Open)
-    gc.setGlobalAlpha(1)
-
-    if (first_sel._1 != -1) {
-      gc.setGlobalAlpha(0.3)
-      gc.fillRect(first_sel._1 * gsz - rad, first_sel._2 * gsz - rad, 2 * rad, 2 * rad)
-      gc.setGlobalAlpha(1)
-    }
-
-    gc.translate(-offset, -offset)
-
   }
 
   val timer = new AnimationTimer(t => {
@@ -283,7 +336,18 @@ object Main extends JFXApp {
 
   }
 
-  loadEntities
+  def loadGame(tigerAI : Boolean, goatAI : Boolean) = {
+    game = new BagChalGame(5)
+    game.setTiger(tigerAI)
+    game.setGoat(goatAI)
+    game.setTurn(BagChalGame.Tiger)
+    changeturn = 1
+    gsz = w / (game.size - 1)
+    loadEntities
+    gameRunning = true
+  }
+
+  loadGame(false, false)
   timer.start()
 
 }
