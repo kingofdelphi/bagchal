@@ -25,7 +25,8 @@ object BagChalGame {
 }
 
 class BagChalGame(val size : Int) {
-  var goats_to_insert = 20
+  val MX_GOATS = 20
+  var goats_to_insert = MX_GOATS
   var goats_eaten = 0
 
   override def clone = {
@@ -68,6 +69,11 @@ class BagChalGame(val size : Int) {
         }
       }
       0
+    }
+
+    //(x, y) = (col, row)
+    def isEmpty(pos : (Int, Int)) = {
+      matrix(pos._2)(pos._1) == BagChalGame.None
     }
 
   }
@@ -150,22 +156,20 @@ class BagChalGame(val size : Int) {
   }
   val INF = 1e9
   //get best move for goat, given that the opponents score is at least mins
-  def getBestGoatMoveR(game : BagChalGame, depth : Int, mins : Double) : (((Int, Int), (Int, Int)), Double) = {
-    val moves = game.getPossibleGoatMoves
+  def getBestGoatMoveR(depth : Int, mins : Double) : (((Int, Int), (Int, Int)), Double) = {
+    val moves = getPossibleGoatMoves
 
     if (moves.isEmpty) (null, -1000) else {
-      if (depth == 1) (moves.head, -game.goats_eaten)
+      if (depth == 1) (moves.head, -goats_eaten)
       else {
         var pruned = false
         var candidates : Seq[(((Int, Int), (Int, Int)), Double)] = Seq()
         var mymin = -INF
         moves.foreach(x => {
           if (!pruned) {
-            val cl = game.clone()
-            cl.executeGoatMove(x)
-            val d = getTigerBestMoveR(cl, depth - 1, mymin)
-            //cl.print
-            //println("goat " + d)
+            executeGoatMove(x)
+            val d = getTigerBestMoveR(depth - 1, mymin)
+            executeGoatMove(x, true)
             if (mymin <= -d._2) {
               mymin = -d._2
               //if < is used here no need to add +1 down while returning otherwise we have to add +1
@@ -194,22 +198,39 @@ class BagChalGame(val size : Int) {
     }
   }
 
-  def getTigerBestMoveR(game : BagChalGame, depth : Int, mins : Double) : (((Int, Int), (Int, Int), Int), Double) = {
-    val moves = game.getPossibleTigerMoves
+  def goatVulnerability(pos : (Int, Int)) = {
+    (-1 to 1).map(x => {
+      if (x != 0 && (pos._1 + pos._2) % 2 != 0) 0
+      else {
+        val np = (pos._1 - x, pos._2 - 1)
+        val np2 = (pos._1 + x, pos._2 + 1)
+        val vulnerable = BagChalGame.inBounds(np._1, np._2, size) &&
+          BagChalGame.inBounds(np2._1, np2._2, size) && state.isEmpty(np) && state.isEmpty(np2)
+        if (vulnerable) 1 else 0
+      }
+    }).sum + 1 + {
+      val np = (pos._1 - 1, pos._2)
+      val np2 = (pos._1 + 1, pos._2)
+      val vulnerable = BagChalGame.inBounds(np._1, np._2, size) &&
+        BagChalGame.inBounds(np2._1, np2._2, size) && state.isEmpty(np) && state.isEmpty(np2)
+      if (vulnerable) 1 else 0
+    }
+  }
+
+  def getTigerBestMoveR(depth : Int, mins : Double) : (((Int, Int), (Int, Int), Int), Double) = {
+    val moves = getPossibleTigerMoves
 
     if (moves.isEmpty) (null, -1000) else {
-      if (depth == 1) (moves.head, game.goats_eaten)
+      if (depth == 1) (moves.head, goats_eaten)
       else {
         var pruned = false
         var candidates : Seq[(((Int, Int), (Int, Int), Int), Double)] = Seq()
         var mymin = -INF
         moves.foreach(x => {
           if (!pruned) {
-            val cl = game.clone()
-            cl.executeTigerMove(x)
-            val d = getBestGoatMoveR(cl, depth - 1, -INF)
-            //cl.print
-            //println("tiger " + d)
+            executeTigerMove(x)
+            val d = getBestGoatMoveR(depth - 1, -INF)
+            executeTigerMove(x, true)
 
             if (mymin <= -d._2) {
               mymin = -d._2
@@ -231,19 +252,32 @@ class BagChalGame(val size : Int) {
           bst = scala.util.Random.shuffle(bst)
           val goat_eater_moves = bst.filter(_._1._3 == 1)
           if (goat_eater_moves.isEmpty) {
-            bst.head
-          } else goat_eater_moves.head
+            if (depth == mxdepth && goats_to_insert < MX_GOATS) {
+              val m = getGoats.map(x => (x, goatVulnerability(x)))
+              val mx = m.map(_._2).max
+              val bstGoat = m.filter(_._2 == mx).head._1
+              println(bstGoat + " " + mx)
+              val tmp = bst.map(x => {
+                val dx = bstGoat._1 - x._1._2._1
+                val dy = bstGoat._2 - x._1._2._2
+                (x, (Math.abs(dx) + Math.abs(dy)) * 1.0 / mx)
+              })
+              val mind = tmp.map(_._2).min
+              tmp.filter(_._2 == mind).head._1
+            } else bst.head
+          } else {
+            goat_eater_moves.head
+          }
         }
 
       }
     }
   }
 
-  val mxtigerdepth = 7
-  val mxgoatdepth = 7
+  val mxdepth = 7
 
   def strategy2 = {
-    val move = getTigerBestMoveR(clone(), mxtigerdepth, -INF)
+    val move = getTigerBestMoveR(mxdepth, -INF)
     move
   }
 
@@ -257,7 +291,7 @@ class BagChalGame(val size : Int) {
   def getBestGoatMove = {
     if (getPossibleGoatMoves.isEmpty) None
     else {
-      val move = getBestGoatMoveR(clone(), mxgoatdepth, -INF)
+      val move = getBestGoatMoveR(mxdepth, -INF)
       //println(s"goat pos ${move._2}")
       Some(move)
     }
@@ -307,22 +341,26 @@ class BagChalGame(val size : Int) {
     turn = which
   }
 
-  def executeGoatMove(mv : ((Int, Int), (Int, Int))) = {
+  def executeGoatMove(mv : ((Int, Int), (Int, Int)), undo : Boolean = false) = {
     if (mv._1 == mv._2) {
-      goats_to_insert -= 1
+      goats_to_insert += (if (undo) 1 else -1)
+      state.matrix(mv._1._2)(mv._1._1) = if (undo) BagChalGame.None else BagChalGame.Goat
+    } else {
+      val (s, d) = if (undo) (mv._2, mv._1) else mv
+      state.matrix(s._2)(s._1) = BagChalGame.None
+      state.matrix(d._2)(d._1) = BagChalGame.Goat
     }
-    state.matrix(mv._1._2)(mv._1._1) = BagChalGame.None
-    state.matrix(mv._2._2)(mv._2._1) = BagChalGame.Goat
   }
 
-  def executeTigerMove(mv : ((Int, Int), (Int, Int), Int)) = {
+  def executeTigerMove(mv : ((Int, Int), (Int, Int), Int), undo : Boolean = false) = {
     if (mv._3 == 1) {
       val mid = BagChalGame.getMidPoint(mv._1, mv._2)
-      state.matrix(mid._2)(mid._1) = BagChalGame.None
-      goats_eaten += 1
+      state.matrix(mid._2)(mid._1) = if (undo) BagChalGame.Goat else BagChalGame.None
+      goats_eaten += (if (undo) -1 else 1)
     }
-    state.matrix(mv._1._2)(mv._1._1) = BagChalGame.None
-    state.matrix(mv._2._2)(mv._2._1) = BagChalGame.Tiger
+    val (s, d) = if (undo) (mv._2, mv._1) else (mv._1, mv._2)
+    state.matrix(s._2)(s._1) = BagChalGame.None
+    state.matrix(d._2)(d._1) = BagChalGame.Tiger
   }
 
   def changeTurn() : Int = {

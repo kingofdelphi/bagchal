@@ -26,29 +26,26 @@ object Main extends JFXApp {
   val canvas = new Canvas(400, 400)
   canvas.focusTraversable = true
   canvas.onMouseClicked = (e : MouseEvent) => canvas.requestFocus()
-  val gameStatus = new Label("Game status")
+  val gameStatus = new Label("Game Status")
+  val ai1 = new ToggleGroup()
+  val ai2 = new ToggleGroup()
+  val first_play = new ToggleGroup()
 
   def getUI = {
     val box = new VBox
 
     //Radio Button Toggle Group
-    val ai1 = new ToggleGroup()
-    val ai2 = new ToggleGroup()
     val g1 = new VBox
     val g2 = new VBox
     val zip = Seq(g1, g2) zip Seq(ai1, ai2) zip Seq("Tiger", "Goat")
 
     zip.foreach(x => {
       val rb1 = new RadioButton {
-        maxWidth = 200
-        maxHeight = 50
         text = "Human"
         toggleGroup = x._1._2
       }
       rb1.setUserData("human")
       val rb2 = new RadioButton {
-        maxWidth = 200
-        maxHeight = 50
         text = "Computer"
         selected = true
         toggleGroup = x._1._2
@@ -59,19 +56,48 @@ object Main extends JFXApp {
       )
     })
 
+
     val button1 = new Button("Runtime Set")
     val button2 = new Button("Reset")
+    val button3 = new Button("Toggle")
     var button_list = new HBox
-    button_list.children = List(button1, button2)
+    button_list.children = List(button1, button2, button3)
 
-
-    button2.onMouseClicked = (e : MouseEvent) => {
-      val t = ai1.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
-      val g = ai2.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
-      loadGame(t, g)
+    button1.onMouseClicked = (e : MouseEvent) => {
+      loadGameFromChoice(true)
     }
 
-    box.children = List(g1, g2, button_list, gameStatus)
+    button2.onMouseClicked = (e : MouseEvent) => {
+      loadGameFromChoice(false)
+    }
+
+    button3.onMouseClicked = (e : MouseEvent) => gameLock.synchronized {
+      gameRunning = !gameRunning
+      val turn = if (game.turn == BagChalGame.Goat) "goat" else "tiger"
+      val sc = s"\nLast Goat score $lastGoatScore" +
+        s"\nLast Tiger score $lastTigerScore"
+      gameStatus.text = s"Game Status: $sc\n$turn's turn" + (if (gameRunning) "" else ", Paused")
+
+    }
+
+    val tiger = new RadioButton {
+      text = "Tiger"
+      toggleGroup = first_play
+    }
+
+    tiger.setUserData("tiger")
+
+    val goat = new RadioButton {
+      text = "Goat"
+      selected = true
+      toggleGroup = first_play
+    }
+    goat.setUserData("goat")
+
+    val ch = new HBox
+    ch.children.addAll(tiger, goat)
+
+    box.children = List(g1, g2, new Label("First player"), ch, button_list, gameStatus)
 
     val layout = new HBox
 
@@ -98,7 +124,7 @@ object Main extends JFXApp {
   stage = new PrimaryStage {
     title = "BagChal Game"
     scene = scene1
-    width = canvas.width.value + 200
+    width = canvas.width.value + 220
     height = canvas.height.value
   }
 
@@ -305,6 +331,7 @@ object Main extends JFXApp {
   }
 
   var gameRunning = false
+  case object gameLock
 
   var lastGoatScore : Double = 0
   var lastTigerScore : Double = 0
@@ -381,11 +408,11 @@ object Main extends JFXApp {
             }
           }
         }
-        if (game.turn == BagChalGame.Goat){
+        if (game.turn == BagChalGame.Goat) {
           if (game.getPossibleGoatMoves.isEmpty) {
             gameRunning = false
           }
-        } else if (game.turn == BagChalGame.Tiger){
+        } else if (game.turn == BagChalGame.Tiger) {
           if (game.getPossibleTigerMoves.isEmpty) {
             gameRunning = false
           }
@@ -394,35 +421,50 @@ object Main extends JFXApp {
       //update entity positions
       entities.foreach(x => x.upd)
 
-    }
-    if (gameRunning) {
-      gameStatus.text = "Game Status: Running" +
-          s"\nLast Goat score $lastGoatScore" +
+      if (gameRunning) {
+        val sc = s"\nLast Goat score $lastGoatScore" +
           s"\nLast Tiger score $lastTigerScore"
-    } else {
-      val turn = if (game.turn == BagChalGame.Goat) "Tiger wins" else "Goat wins"
-      gameStatus.text = s"Game Status: $turn"
+        val turn = if (game.turn == BagChalGame.Goat) "goat" else "tiger"
+        gameStatus.text = s"Game Status: $sc\n$turn's turn"
+      } else {
+        val turn = if (game.turn == BagChalGame.Goat) "Tiger wins" else "Goat wins"
+        gameStatus.text = s"Game Status: $turn"
+      }
     }
   }
 
   val timer = new AnimationTimer(t => {
-    render
+    gameLock.synchronized {
+      render
+    }
   }) {
 
   }
 
-  def loadGame(tigerAI : Boolean, goatAI : Boolean) = {
-    game = new BagChalGame(5)
+  def loadGameFromChoice(continueOld : Boolean = false) = {
+    val t = ai1.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
+    val g = ai2.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
+    loadGame(if (continueOld) game else new BagChalGame(5), t, g)
+  }
+
+  def loadGame(ng : BagChalGame, tigerAI : Boolean, goatAI : Boolean) = gameLock.synchronized {
+    keypress = None
+    game = ng
     game.setTiger(tigerAI)
     game.setGoat(goatAI)
-    game.setTurn(BagChalGame.Tiger)
+    val first = first_play.selectedToggle.value.getUserData().asInstanceOf[String] == "tiger"
+    val notfirst = if (first_play.selectedToggle.value.getUserData().asInstanceOf[String] == "tiger") BagChalGame.Goat else BagChalGame.Tiger
+
+    game.setTurn(notfirst)
+
     changeturn = 1
     gsz = w / (game.size - 1)
     loadEntities
     gameRunning = true
+    gameStatus.text = s"Game Status: $first's turn"
   }
 
-  loadGame(false, false)
+  loadGameFromChoice(false)
   timer.start()
 
 }
