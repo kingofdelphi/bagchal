@@ -28,6 +28,8 @@ class BagChalGame(val size : Int) {
   val MX_GOATS = 20
   var goats_to_insert = MX_GOATS
   var goats_eaten = 0
+  val mxdepth = 7
+  val INF = 1e9
 
   override def clone = {
     val game = new BagChalGame(size)
@@ -154,7 +156,7 @@ class BagChalGame(val size : Int) {
   def strategy1 = {
     util.Random.shuffle(getPossibleTigerMoves).headOption
   }
-  val INF = 1e9
+
   //get best move for goat, given that the opponents score is at least mins
   def getBestGoatMoveR(depth : Int, mins : Double) : (((Int, Int), (Int, Int)), Double) = {
     val moves = getPossibleGoatMoves
@@ -273,8 +275,6 @@ class BagChalGame(val size : Int) {
       }
     }
   }
-
-  val mxdepth = 7
 
   def strategy2 = {
     val move = getTigerBestMoveR(mxdepth, -INF)
