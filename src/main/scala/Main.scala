@@ -1,5 +1,8 @@
 package bagchal
 
+import javafx.beans.{InvalidationListener, Observable}
+import javax.swing.event.{ChangeEvent, ChangeListener}
+
 import utils.Utils.Point
 
 import scala.concurrent.Future
@@ -8,12 +11,15 @@ import scalafx.Includes._
 import scalafx.animation.AnimationTimer
 import scalafx.application.JFXApp
 import scalafx.application.JFXApp.PrimaryStage
+import scalafx.collections.{ObservableArray, ObservableBuffer}
+import scalafx.geometry.Insets
 import scalafx.scene.canvas.Canvas
 import scalafx.scene.control._
 import scalafx.scene.image.ImageView
 import scalafx.scene.input.{KeyCode, KeyEvent, MouseEvent}
-import scalafx.scene.layout.{HBox, VBox}
+import scalafx.scene.layout.{BorderPane, HBox, VBox}
 import scalafx.scene.{Group, Scene}
+import scalafx.stage.Stage
 
 /**
  * Example adapted from code showed in [[http://docs.oracle.com/javafx/2/canvas/jfxpub-canvas.htm]].
@@ -45,6 +51,8 @@ object Main extends JFXApp {
   val goat_check_box = new CheckBox("Show Goat Move Score")
   val score_label = new Label("")
 
+  var gameHistory : Seq[BagChalGame] = Seq()
+
   def getUI = {
     //Radio Button Toggle Group
     val g1 = new VBox
@@ -71,8 +79,13 @@ object Main extends JFXApp {
     val button1 = new Button("Runtime Set")
     val button2 = new Button("Reset")
     val button3 = new Button("Toggle")
-    var button_list = new HBox
-    button_list.children = List(button1, button2, button3)
+    val button4 = new Button("History")
+    var button_list = new VBox
+
+    button_list.children = List(button1, button2, button3, button4).map(x => {
+      x.setPrefWidth(120)
+      x
+    })
 
     button1.onMouseClicked = (e : MouseEvent) => {
       loadGameFromChoice(true)
@@ -84,6 +97,71 @@ object Main extends JFXApp {
 
     button3.onMouseClicked = (e : MouseEvent) => gameLock.synchronized {
       gameStatus = (if (gameStatus == Paused) Running else Paused)
+    }
+
+    button4.onMouseClicked = (e : MouseEvent) => {
+      val canvas = new Canvas(420, 420)
+      val renderer = new Renderer(canvas)
+      // Create dialog
+
+      val listbox = new ListView[String]
+      val gameList = gameHistory.map(x => x)
+      listbox.items = ObservableBuffer((1 to gameList.size).map(_.toString).reverse)
+
+      val refresh = () => {
+        val id = listbox.selectionModel.value.getSelectedItem.toInt - 1
+        renderer.setGame(gameList.zipWithIndex.filter(_._2 == id).head._1)
+        renderer.render
+      }
+
+      val listbtn = new Button {
+        text = "Load Selected State"
+        onAction = handle {
+          val id = listbox.selectionModel.value.getSelectedItem.toInt - 1
+          val (t, g) = getChoice
+          val ns = gameList.zipWithIndex.filter(_._2 == id).head._1.clone()
+          gameHistory = gameList.zipWithIndex.filter(_._2 <= id).map(_._1)
+          loadGame(ns, t, g)
+        }
+      }
+
+      listbox.onMouseClicked = (e : MouseEvent) => {
+        refresh()
+      }
+
+      listbox.onKeyReleased = (e : KeyEvent) => {
+        refresh()
+      }
+
+      listbox.selectionModel.value.selectFirst()
+      refresh()
+
+      val lbox = new HBox {
+        children = List(canvas, listbox)
+      }
+
+      val dialogStage = new Stage {
+        outer =>
+        title = "Move History"
+        scene = new Scene {
+          root = new BorderPane {
+            padding = Insets(25)
+            center = new VBox {
+              children = List(lbox, new HBox {
+                children = List(listbtn , new Button {
+                  text = "Close"
+                  onAction = handle {
+                    outer.close()
+                  }
+                })
+              })
+            }
+          }
+        }
+      }
+
+      // Show dialog and wait till it is closed
+      dialogStage.showAndWait()
     }
 
     val tiger = new RadioButton {
@@ -227,6 +305,7 @@ object Main extends JFXApp {
     val p = renderer.entities.partition(x => !x.destroyed && x.data.asInstanceOf[(Int, Int)] == move._1)
     renderer.entities = p._2 :+ new Tiger(p._1.head.src, renderer.getPos(move._2), move._2)
     game.executeTigerMove(move)
+    gameHistory = gameHistory :+ game.clone()
 
     if (game.getPossibleGoatMoves.isEmpty) {
       gameStatus = Finished
@@ -263,6 +342,7 @@ object Main extends JFXApp {
       renderer.entities = p._2 :+ new Goat(p._1.head.src, renderer.getPos(move._2), move._2)
     }
     game.executeGoatMove(move)
+    gameHistory = gameHistory :+ game.clone()
 
     if (game.getPossibleTigerMoves.isEmpty) {
       gameStatus = Finished
@@ -402,10 +482,19 @@ object Main extends JFXApp {
 
   }
 
-  def loadGameFromChoice(continueOld : Boolean = false) = {
+  def getChoice = {
     val t = ai1.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
     val g = ai2.selectedToggle.value.getUserData.asInstanceOf[String] == "computer"
-    loadGame(if (continueOld) game else new BagChalGame(5), t, g)
+    (t, g)
+  }
+
+  def loadGameFromChoice(continueOld : Boolean = false) = {
+    val (t, g) = getChoice
+    val gm = if (continueOld) game else new BagChalGame(5)
+    if (!continueOld) {
+      gameHistory = gm.clone() :: Nil
+    }
+    loadGame(gm, t, g)
   }
 
   def loadGame(ng : BagChalGame, tigerAI : Boolean, goatAI : Boolean) = gameLock.synchronized {
