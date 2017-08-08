@@ -258,7 +258,6 @@ class BagChalGame(val size : Int) {
               val m = getGoats.map(x => (x, goatVulnerability(x)))
               val mx = m.map(_._2).max
               val bstGoat = m.filter(_._2 == mx).head._1
-              println(bstGoat + " " + mx)
               val tmp = bst.map(x => {
                 val dx = bstGoat._1 - x._1._2._1
                 val dy = bstGoat._2 - x._1._2._2

@@ -85,11 +85,10 @@ class Goat(src_p : Point, dest_p : Point, dest_pos : (Int, Int)) extends Entity(
 
 }
 
-
 class SelBox(src_p : Point, dest_p : Point, alpha : Double) extends Entity(src_p, dest_p, alpha) {
 
   def draw(canvas : Canvas) = {
-    val rad = 20
+    val rad = 30
     val gc = canvas.graphicsContext2D
     gc.setGlobalAlpha(data.asInstanceOf[Double])
     gc.fill = Color.Red
