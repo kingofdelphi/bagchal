@@ -14,15 +14,32 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
   val Entering = 0
   val Destroyed = 1
   val Stable = 2
-  val AlphaTransitionTime = 2 //seconds
+  val AlphaTransitionTime = 1.5 //seconds
 
   var state = Entering
 
+  var ztime : Long = System.currentTimeMillis()
+  var origin : Point = src
+
   def destroy() = state = Destroyed
+
+  //initial velocity, acceleration
+  var u : Double = 0
+  var a : Double = 0
+  val PosTransitionTime : Double = 1.5
+
+  def calc() = {
+    val s = Math.max(Math.abs(dest.y - origin.y), Math.abs(dest.x - origin.x))
+    u = 2 * s / PosTransitionTime
+    if (s != 0) a = -u * u / 2 / s else a = 0
+  }
+
+  calc()
 
   def moveTo(p : Point) = {
     dest = p
     src = p
+    origin = src
   }
 
   def destroyed = {
@@ -35,9 +52,11 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
 
   def transitionTo(p : Point) = {
     dest = p
+    ztime = System.currentTimeMillis()
+    calc()
   }
 
-  def alphaStable = alpha >= 0.99
+  def alphaStable = alpha >= 0.995
 
   def isTransitioning = {
     !alphaStable || {
@@ -48,8 +67,13 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
   }
 
   def upd(dt : Double) = {
-    val dp = Point(dest.x - src.x, dest.y - src.y)
-    src = Point(src.x + dp.x * f, src.y + dp.y * f)
+    val fd = (System.currentTimeMillis() - ztime) / 1e3
+    val md = Math.min(fd, PosTransitionTime)
+    val xsgn = Math.signum(dest.x - origin.x)
+    val ysgn = Math.signum(dest.y - origin.y)
+    //val dp = md * Math.abs(dest.x - origin.x)
+    val dp = u * md + 0.5 * a * md * md
+    src = Point(origin.x + xsgn * dp, origin.y + ysgn * dp)
     val dalpha = dt / AlphaTransitionTime
     if (destroyed) {
       alpha = Math.max(0, alpha - dalpha)
