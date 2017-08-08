@@ -9,7 +9,7 @@ import scalafx.animation.AnimationTimer
 import scalafx.application.JFXApp
 import scalafx.application.JFXApp.PrimaryStage
 import scalafx.scene.canvas.Canvas
-import scalafx.scene.control.{Button, Label, RadioButton, ToggleGroup}
+import scalafx.scene.control._
 import scalafx.scene.image.ImageView
 import scalafx.scene.input.{KeyCode, KeyEvent, MouseEvent}
 import scalafx.scene.layout.{HBox, VBox}
@@ -18,16 +18,32 @@ import scalafx.scene.{Group, Scene}
 /**
  * Example adapted from code showed in [[http://docs.oracle.com/javafx/2/canvas/jfxpub-canvas.htm]].
  */
+
 object Main extends JFXApp {
   val canvas = new Canvas(420, 420)
   canvas.focusTraversable = true
   canvas.onMouseClicked = (e : MouseEvent) => canvas.requestFocus()
-  val gameStatus = new Label("Game Status")
+
+  var winner = BagChalGame.None
+
+  val Finished = 0
+  val Running = 1
+  val Thinking = 2
+  val Paused = 3
+  val Scoring = 4
+
+  var gameStatus = Finished
+
+  val gameStatusLabel = new Label("Game Status")
+
   val thinkingStatus = new Label("")
   val ai1 = new ToggleGroup()
   val ai2 = new ToggleGroup()
   val first_play = new ToggleGroup()
   val turnImage = new ImageView()
+  val tiger_check_box = new CheckBox("Show Tiger Move Score")
+  val goat_check_box = new CheckBox("Show Goat Move Score")
+  val score_label = new Label("")
 
   def getUI = {
     //Radio Button Toggle Group
@@ -52,7 +68,6 @@ object Main extends JFXApp {
       )
     })
 
-
     val button1 = new Button("Runtime Set")
     val button2 = new Button("Reset")
     val button3 = new Button("Toggle")
@@ -68,12 +83,7 @@ object Main extends JFXApp {
     }
 
     button3.onMouseClicked = (e : MouseEvent) => gameLock.synchronized {
-      gameRunning = !gameRunning
-      val turn = if (game.turn == BagChalGame.Goat) "goat" else "tiger"
-      val sc = s"\nLast Goat score $lastGoatScore" +
-        s"\nLast Tiger score $lastTigerScore"
-      gameStatus.text = s"Game Status: $sc" + (if (gameRunning) "" else ", Paused")
-
+      gameStatus = (if (gameStatus == Paused) Running else Paused)
     }
 
     val tiger = new RadioButton {
@@ -90,11 +100,14 @@ object Main extends JFXApp {
     }
     goat.setUserData("goat")
 
+    val score_box = new VBox
+    score_box.children = List(tiger_check_box, goat_check_box, score_label)
+
     val ch = new HBox
     ch.children.addAll(tiger, goat)
 
     val box = new VBox
-    box.children = List(g1, g2, new Label("First player"), ch, button_list, gameStatus, thinkingStatus, turnImage)
+    box.children = List(g1, g2, new Label("First player"), ch, button_list, score_box, gameStatusLabel, thinkingStatus, turnImage)
 
     val layout = new HBox
 
@@ -163,6 +176,7 @@ object Main extends JFXApp {
                 if (curbox == BagChalGame.None) {
                   val r = game.handleTigerMovement(first_sel, selbox)
                   if (r._1) {
+                    canselect = false
                     executeTigerMove((first_sel, selbox, if (r._2) 1 else 0))
                     first_sel = (-1, -1)
                   }
@@ -172,6 +186,7 @@ object Main extends JFXApp {
             case BagChalGame.Goat =>
               if (game.goats_to_insert > 0) {
                 if (curbox == BagChalGame.None) {
+                  canselect = false
                   executeGoatMove((selbox, selbox))
                 }
               } else {
@@ -182,6 +197,7 @@ object Main extends JFXApp {
                 } else {
                   if (curbox == BagChalGame.None) {
                     if (game.handleGoatMovement(first_sel, selbox)) {
+                      canselect = false
                       executeGoatMove((first_sel, selbox))
                       first_sel = (-1, -1)
                     }
@@ -211,14 +227,27 @@ object Main extends JFXApp {
     val p = renderer.entities.partition(x => !x.destroyed && x.data.asInstanceOf[(Int, Int)] == move._1)
     renderer.entities = p._2 :+ new Tiger(p._1.head.src, renderer.getPos(move._2), move._2)
     game.executeTigerMove(move)
-    changeturn = 1
-    canselect = false
-    lastTigerScore = score.getOrElse(
-      game.getBestGoatMove.map(-_._2).getOrElse(1000)
-    )
 
     if (game.getPossibleGoatMoves.isEmpty) {
-      gameRunning = false
+      gameStatus = Finished
+      winner = BagChalGame.Tiger
+    } else {
+      if (tiger_check_box.selected.value) {
+        if (score.isDefined) {
+          lastTigerScore = score.get
+          changeturn = 1
+        } else {
+          gameStatus = Scoring
+          val mv = Future(game.clone().getBestGoatMove.map(-_._2))
+          mv.map(x => {
+            lastTigerScore = x.get
+            gameStatus = Running
+            changeturn = 1
+          })
+        }
+      } else {
+        changeturn = 1
+      }
     }
 
   }
@@ -234,15 +263,29 @@ object Main extends JFXApp {
       renderer.entities = p._2 :+ new Goat(p._1.head.src, renderer.getPos(move._2), move._2)
     }
     game.executeGoatMove(move)
-    changeturn = 1
-    canselect = false
-    lastGoatScore = score.getOrElse(
-      game.getBestTigerMove.map(-_._2).getOrElse(1000)
-    )
 
     if (game.getPossibleTigerMoves.isEmpty) {
-      gameRunning = false
+      gameStatus = Finished
+      winner = BagChalGame.Goat
+    } else {
+      if (goat_check_box.selected.value) {
+        if (score.isDefined) {
+          lastGoatScore = score.get
+          changeturn = 1
+        } else {
+          gameStatus = Scoring
+          val mv = Future(game.clone().getBestTigerMove.map(-_._2))
+          mv.map(x => {
+            lastGoatScore = x.get
+            gameStatus = Running
+            changeturn = 1
+          })
+        }
+      } else {
+        changeturn = 1
+      }
     }
+
 
   }
 
@@ -252,7 +295,6 @@ object Main extends JFXApp {
     })
   }
 
-  var gameRunning = false
   case object gameLock
 
   var lastGoatScore : Double = 0
@@ -261,34 +303,35 @@ object Main extends JFXApp {
   var thinking : Int = BagChalGame.None
 
   def render {
-    if (gameRunning) {
-      //render
-      renderer.render
-      if (game.turn == BagChalGame.Tiger) turnImage.setImage(Renderer.tigerImage) else turnImage.setImage(Renderer.goatImage)
+    //render
+    renderer.render
+    if (game.turn == BagChalGame.Tiger) turnImage.setImage(Renderer.tigerImage) else turnImage.setImage(Renderer.goatImage)
 
-      if (game.turn != game.player_goat && game.turn != game.player_tiger) {
-        val sbox = new SelBox(renderer.getPos(selbox), Point(), 0.1)
+    if (game.turn != game.player_goat && game.turn != game.player_tiger) {
+      val sbox = new SelBox(renderer.getPos(selbox), Point(), 0.1)
+      renderer.drawEntity(sbox)
+      if (first_sel._1 != -1) {
+        val sbox = new SelBox(renderer.getPos(first_sel), Point(), 0.3)
         renderer.drawEntity(sbox)
-        if (first_sel._1 != -1) {
-          val sbox = new SelBox(renderer.getPos(first_sel), Point(), 0.3)
-          renderer.drawEntity(sbox)
-        }
       }
+    }
 
-      if (thinking == BagChalGame.Tiger) thinkingStatus.text = "Tiger is thinking"
-      else if (thinking == BagChalGame.Goat) thinkingStatus.text = "Goat is thinking"
-      else thinkingStatus.text = ""
+    if (thinking == BagChalGame.Tiger) thinkingStatus.text = "Tiger is thinking"
+    else if (thinking == BagChalGame.Goat) thinkingStatus.text = "Goat is thinking"
+    else thinkingStatus.text = ""
 
-      //get events
-      keypress.map(x => {
-        handleKeyEvent(x)
-        keypress = None
-      })
+    //get events
+    keypress.map(x => {
+      handleKeyEvent(x)
+      keypress = None
+    })
 
+    if (gameStatus == Running) {
       if (!isTransitioning) {
         if (changeturn == 1) {
           val turn = game.changeTurn()
           changeturn = 0
+          canselect = false
           if (turn != game.player_goat && turn != game.player_tiger) {
             canselect = true
           } else if (turn == BagChalGame.Tiger) {
@@ -296,7 +339,8 @@ object Main extends JFXApp {
             //donot use game, clone it instead, multiple threads one writing and one reading is causing inconsistency
             Future(game.clone().getBestTigerMove).map(move => {
               if (!move.isDefined) {
-                gameRunning = false
+                gameStatus = Finished
+                winner = BagChalGame.Goat
               } else {
                 thinking = 0
                 executeTigerMove(move.get._1, Some(move.get._2))
@@ -306,7 +350,8 @@ object Main extends JFXApp {
             thinking = BagChalGame.Goat
             Future(game.clone().getBestGoatMove).map(move => {
               if (!move.isDefined) {
-                gameRunning = false
+                gameStatus = Finished
+                winner = BagChalGame.Tiger
               } else {
                 thinking = 0
                 executeGoatMove(move.get._1, Some(move.get._2))
@@ -315,21 +360,41 @@ object Main extends JFXApp {
           }
         }
       }
-      //update entity positions
-      renderer.entities.foreach(x => x.upd)
-
-      if (gameRunning) {
-        val sc = s"\nLast Goat score $lastGoatScore" +
-          s"\nLast Tiger score $lastTigerScore"
-        gameStatus.text = s"Game Status: $sc"
-      } else {
-        val turn = if (game.turn == BagChalGame.Goat) "Tiger wins" else "Goat wins"
-        gameStatus.text = s"Game Status: $turn"
-      }
     }
+    //update entity positions
+    if (gameStatus != Paused) {
+      renderer.entities.foreach(x => x.upd(dt))
+    }
+
+    if (gameStatus == Running) {
+      val turn = if (game.turn == BagChalGame.Goat) "Goat" else "Tiger"
+      gameStatusLabel.text = s"Game Status: $turn's turn"
+    } else if (gameStatus == Finished) {
+      val win = if (winner == BagChalGame.Goat) "Goat" else "Tiger"
+      gameStatusLabel.text = s"Game Status: $win wins"
+    } else if (gameStatus == Paused) {
+      gameStatusLabel.text = "Game Status: Paused"
+    } else if (gameStatus == Scoring) {
+      gameStatusLabel.text = "Game Status: Calculating score for last move"
+    }
+
+    var scoring : Seq[String] = Seq()
+    if (tiger_check_box.selected.value) {
+      scoring = scoring :+ s"Tigers score: $lastTigerScore"
+    }
+    if (goat_check_box.selected.value) {
+      scoring = scoring :+ s"Goats score: $lastGoatScore"
+    }
+    score_label.text = scoring.mkString("\n")
+
   }
 
+  var frameStart : Long = 0
+  var dt : Double = 0
+
   val timer = new AnimationTimer(t => {
+    dt = (t - frameStart) / 1e9
+    frameStart = t
     gameLock.synchronized {
       render
     }
@@ -360,8 +425,8 @@ object Main extends JFXApp {
 
     changeturn = 1
     renderer.setGame(game)
-    gameRunning = true
-    gameStatus.text = ""
+    gameStatus = Running
+    gameStatusLabel.text = ""
   }
 
   loadGameFromChoice(false)

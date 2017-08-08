@@ -14,6 +14,7 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
   val Entering = 0
   val Destroyed = 1
   val Stable = 2
+  val AlphaTransitionTime = 2 //seconds
 
   var state = Entering
 
@@ -46,13 +47,14 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
     }
   }
 
-  def upd = {
+  def upd(dt : Double) = {
     val dp = Point(dest.x - src.x, dest.y - src.y)
     src = Point(src.x + dp.x * f, src.y + dp.y * f)
+    val dalpha = dt / AlphaTransitionTime
     if (destroyed) {
-      alpha = 0.999 * alpha
+      alpha = Math.max(0, alpha - dalpha)
     } else if (entering) {
-      alpha = Math.min(alpha + 0.001, 1.0)
+      alpha = Math.min(alpha + dalpha, 1.0)
       if (alphaStable) state = Stable
     }
   }

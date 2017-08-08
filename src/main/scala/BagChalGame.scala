@@ -28,7 +28,7 @@ class BagChalGame(val size : Int) {
   val MX_GOATS = 20
   var goats_to_insert = MX_GOATS
   var goats_eaten = 0
-  val mxdepth = 7
+  val mxdepth = 8
   val INF = 1e9
 
   override def clone = {
