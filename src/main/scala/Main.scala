@@ -97,6 +97,11 @@ object Main extends JFXApp {
 
     button3.onMouseClicked = (e : MouseEvent) => gameLock.synchronized {
       gameStatus = (if (gameStatus == Paused) Running else Paused)
+      if (gameStatus == Paused) {
+        renderer.entities.foreach(_.pause)
+      } else {
+        renderer.entities.foreach(_.resume)
+      }
     }
 
     button4.onMouseClicked = (e : MouseEvent) => {

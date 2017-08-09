@@ -42,6 +42,20 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
     origin = src
   }
 
+  var paused : Boolean = false
+
+  var pausetime : Long = 0
+
+  def pause = {
+    paused = true
+    pausetime = System.currentTimeMillis()
+  }
+
+  def resume = {
+    paused = false
+    ztime = System.currentTimeMillis() - (pausetime - ztime)
+  }
+
   def destroyed = {
     state == Destroyed
   }
@@ -67,7 +81,8 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
   }
 
   def upd(dt : Double) = {
-    val fd = (System.currentTimeMillis() - ztime) / 1e3
+    val tm = if (paused) pausetime else System.currentTimeMillis()
+    val fd = (tm - ztime) / 1e3
     val md = Math.min(fd, PosTransitionTime)
     val xsgn = Math.signum(dest.x - origin.x)
     val ysgn = Math.signum(dest.y - origin.y)
