@@ -53,7 +53,7 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
 
   def resume = {
     paused = false
-    ztime = System.currentTimeMillis() - (pausetime - ztime)
+    ztime = System.currentTimeMillis() - Math.max(pausetime - ztime, 0)
   }
 
   def destroyed = {

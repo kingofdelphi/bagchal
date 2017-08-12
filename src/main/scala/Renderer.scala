@@ -81,4 +81,16 @@ class Renderer(canvas : Canvas) {
     gc.translate(-offset, -offset)
   }
 
+  def getCellFromPoint(p : Point) = {
+    val zx = p.x - offset
+    val zy = p.y - offset
+    val row = zy / gsz
+    val col = zx / gsz
+    val tol = 0.3
+    val dr = Math.round(row).toInt
+    val dc = Math.round(col).toInt
+    val del = Point((dr - row) * gsz, (dc - col) * gsz)
+    if (del.x * del.x + del.y * del.y <= gsz * gsz / 9) (dc, dr) else (-1, 0)
+  }
+
 }

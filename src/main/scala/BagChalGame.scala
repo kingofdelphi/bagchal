@@ -28,11 +28,12 @@ class BagChalGame(val size : Int) {
   val MX_GOATS = 20
   var goats_to_insert = MX_GOATS
   var goats_eaten = 0
-  val mxdepth = 9
+  var mxdepth = 8
   val INF = 1e9
 
   override def clone = {
     val game = new BagChalGame(size)
+    game.mxdepth = mxdepth
     game.goats_to_insert = goats_to_insert
     game.goats_eaten = goats_eaten
 
@@ -181,7 +182,8 @@ class BagChalGame(val size : Int) {
 
     val moves = tmp.sortBy(_._2).map(_._1)
 
-    if (moves.isEmpty) (null, -1000000) else {
+    if (goats_eaten == 5) (null, -1000000)
+    else if (moves.isEmpty) (null, -1000000) else {
       if (depth == 1) (moves.head, -goats_eaten * 100 + tigersLocked)
       else {
         var pruned = false
@@ -248,17 +250,25 @@ class BagChalGame(val size : Int) {
     var mins = a
     var maxs = b
 
+    val poss = scala.util.Random.shuffle(getPossibleTigerMoves)
+
     val m = getGoats.map(x => (x, goatVulnerability(x)))
-    val mx = m.map(_._2).max
-    val bstGoat = m.filter(_._2 == mx).head._1
 
-    val tmp = scala.util.Random.shuffle(getPossibleTigerMoves).map(x => {
-      val dx = bstGoat._1 - x._2._1
-      val dy = bstGoat._2 - x._2._2
-      (x, if (x._3 == 1) 0 else (Math.abs(dx) + Math.abs(dy)))
-    })
+    val moves = if (m.isEmpty) {
+      poss
+    } else {
 
-    val moves = tmp.sortBy(_._2).map(_._1)
+      val mx = m.map(_._2).max
+      val bstGoat = m.filter(_._2 == mx).head._1
+
+      val tmp = poss.map(x => {
+        val dx = bstGoat._1 - x._2._1
+        val dy = bstGoat._2 - x._2._2
+        (x, if (x._3 == 1) 0 else (Math.abs(dx) + Math.abs(dy)))
+      })
+      tmp.sortBy(_._2).map(_._1)
+    }
+
 
     if (moves.isEmpty) (null, -1000000) else {
       if (depth == 1) (moves.head, goats_eaten * 100 - tigersLocked)
@@ -393,7 +403,8 @@ class BagChalGame(val size : Int) {
   }
 
   def gameFinished = {
-    getPossibleTigerMoves.isEmpty
+    if (turn == BagChalGame.Tiger) getPossibleTigerMoves.isEmpty
+    else goats_eaten == 5
   }
 
 }

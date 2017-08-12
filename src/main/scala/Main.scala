@@ -28,7 +28,6 @@ import scalafx.stage.Stage
 object Main extends JFXApp {
   val canvas = new Canvas(420, 420)
   canvas.focusTraversable = true
-  canvas.onMouseClicked = (e : MouseEvent) => canvas.requestFocus()
 
   var winner = BagChalGame.None
 
@@ -53,6 +52,10 @@ object Main extends JFXApp {
 
   var gameHistory : Seq[BagChalGame] = Seq()
 
+  val levBox = new TextField {
+    prefWidth = 50
+  }
+
   def getUI = {
     //Radio Button Toggle Group
     val g1 = new VBox
@@ -72,7 +75,7 @@ object Main extends JFXApp {
       }
       rb2.setUserData("computer")
       x._1._1.children = List(
-        new Label(x._2), rb1, rb2
+        new Label(x._2), new HBox(rb1, rb2)
       )
     })
 
@@ -190,7 +193,17 @@ object Main extends JFXApp {
     ch.children.addAll(tiger, goat)
 
     val box = new VBox
-    box.children = List(g1, g2, new Label("First player"), ch, button_list, score_box, gameStatusLabel, thinkingStatus, turnImage)
+    val stbutton = new Button("Set")
+
+    stbutton.onMouseClicked = (e : MouseEvent) => gameLock.synchronized {
+      if (levBox.text.value != "") {
+        val d = levBox.text.value.toInt
+        game.mxdepth = levBox.text.value.toInt
+        println("set game depth to " + game.mxdepth)
+      }
+    }
+
+    box.children = List(new HBox(new Label("AI Level"), levBox, stbutton), g1, g2, new Label("First player"), ch, button_list, score_box, gameStatusLabel, thinkingStatus, turnImage)
 
     val layout = new HBox
 
@@ -243,53 +256,7 @@ object Main extends JFXApp {
       case KeyCode.Down =>
         (0, 1)
       case KeyCode.Space =>
-        if (!canselect) None
-        else if (first_sel == selbox)
-          first_sel = (-1, -1)
-        else {
-          val curbox = game.state.matrix(selbox._2)(selbox._1)
-          game.turn match {
-            case BagChalGame.Tiger =>
-              //not previously selected
-              if (first_sel._1 == -1) {
-                if (curbox == BagChalGame.Tiger) {
-                  first_sel = selbox
-                }
-              } else {
-                if (curbox == BagChalGame.None) {
-                  val r = game.handleTigerMovement(first_sel, selbox)
-                  if (r._1) {
-                    canselect = false
-                    executeTigerMove((first_sel, selbox, if (r._2) 1 else 0))
-                    first_sel = (-1, -1)
-                  }
-                }
-              }
-
-            case BagChalGame.Goat =>
-              if (game.goats_to_insert > 0) {
-                if (curbox == BagChalGame.None) {
-                  canselect = false
-                  executeGoatMove((selbox, selbox))
-                }
-              } else {
-                if (first_sel._1 == -1) {
-                  if (curbox == BagChalGame.Goat) {
-                    first_sel = selbox
-                  }
-                } else {
-                  if (curbox == BagChalGame.None) {
-                    if (game.handleGoatMovement(first_sel, selbox)) {
-                      canselect = false
-                      executeGoatMove((first_sel, selbox))
-                      first_sel = (-1, -1)
-                    }
-                  }
-                }
-              }
-            case _ =>
-          }
-        }
+        sel(selbox)
         (0, 0)
       case key =>
         (0, 0)
@@ -298,6 +265,57 @@ object Main extends JFXApp {
       Math.max(0, Math.min(selbox._1 + dx, game.size - 1)),
       Math.max(0, Math.min(selbox._2 + dy, game.size - 1))
     )
+  }
+
+  def sel(selbox : (Int, Int)) = {
+    if (!canselect) None
+    else if (first_sel == selbox)
+      first_sel = (-1, -1)
+    else {
+      val curbox = game.state.matrix(selbox._2)(selbox._1)
+      game.turn match {
+        case BagChalGame.Tiger =>
+          //not previously selected
+          if (first_sel._1 == -1) {
+            if (curbox == BagChalGame.Tiger) {
+              first_sel = selbox
+            }
+          } else {
+            if (curbox == BagChalGame.None) {
+              val r = game.handleTigerMovement(first_sel, selbox)
+              if (r._1) {
+                canselect = false
+                executeTigerMove((first_sel, selbox, if (r._2) 1 else 0))
+                first_sel = (-1, -1)
+              }
+            }
+          }
+
+        case BagChalGame.Goat =>
+          if (game.goats_to_insert > 0) {
+            if (curbox == BagChalGame.None) {
+              canselect = false
+              executeGoatMove((selbox, selbox))
+            }
+          } else {
+            if (first_sel._1 == -1) {
+              if (curbox == BagChalGame.Goat) {
+                first_sel = selbox
+              }
+            } else {
+              if (curbox == BagChalGame.None) {
+                if (game.handleGoatMovement(first_sel, selbox)) {
+                  canselect = false
+                  executeGoatMove((first_sel, selbox))
+                  first_sel = (-1, -1)
+                }
+              }
+            }
+          }
+        case _ =>
+      }
+    }
+
   }
 
   def executeTigerMove(move : ((Int, Int), (Int, Int), Int), score : Option[Double] = None) = {
@@ -312,7 +330,7 @@ object Main extends JFXApp {
     game.executeTigerMove(move)
     gameHistory = gameHistory :+ game.clone()
 
-    if (game.getPossibleGoatMoves.isEmpty) {
+    if (game.goats_eaten == 5 || game.getPossibleGoatMoves.isEmpty) {
       gameStatus = Finished
       winner = BagChalGame.Tiger
     } else {
@@ -386,6 +404,14 @@ object Main extends JFXApp {
   var lastTigerScore : Double = 0
   var renderer : Renderer = new Renderer(canvas)
   var thinking : Int = BagChalGame.None
+
+  canvas.onMouseClicked = (e : MouseEvent) => {
+    val p = renderer.getCellFromPoint(Point(e.x, e.y))
+    if (p._1 != -1) {
+      selbox = p
+      sel(p)
+    }
+  }
 
   def render {
     //render
@@ -496,6 +522,12 @@ object Main extends JFXApp {
   def loadGameFromChoice(continueOld : Boolean = false) = {
     val (t, g) = getChoice
     val gm = if (continueOld) game else new BagChalGame(5)
+
+    if (levBox.text.value != "") {
+      gm.mxdepth = levBox.text.value.toInt
+      println("set " + gm.mxdepth)
+    }
+
     if (!continueOld) {
       gameHistory = gm.clone() :: Nil
     }
@@ -516,6 +548,7 @@ object Main extends JFXApp {
     val notfirst = if (tigerfirst) BagChalGame.Goat else BagChalGame.Tiger
 
     game.setTurn(notfirst)
+    levBox.text = game.mxdepth.toString
 
     changeturn = 1
     renderer.setGame(game)
