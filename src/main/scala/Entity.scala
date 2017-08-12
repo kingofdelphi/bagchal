@@ -26,7 +26,7 @@ abstract class Entity(var src : Point, var dest : Point, var data : Any = null) 
   //initial velocity, acceleration
   var u : Double = 0
   var a : Double = 0
-  val PosTransitionTime : Double = 1.5
+  val PosTransitionTime : Double = 0.8
 
   def calc() = {
     val s = Math.max(Math.abs(dest.y - origin.y), Math.abs(dest.x - origin.x))
